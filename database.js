@@ -67,25 +67,25 @@ class Database {
 
         // جدول الإيرادات
         this.db.run(`CREATE TABLE IF NOT EXISTS revenue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date DATE NOT NULL,
-            type TEXT NOT NULL,
-            amount REAL NOT NULL,
-            client_id INTEGER,
-            client_name TEXT,
-            vehicle_id INTEGER,
-            vehicle_number TEXT,
-            payment_method TEXT DEFAULT 'cash',
-            description TEXT,
-            notes TEXT,
-            status TEXT DEFAULT 'completed',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (client_id) REFERENCES clients (id)
-        )`, (err) => {
-            if (err) console.error('Error creating revenue table:', err);
-            else console.log('✅ Revenue table created');
-        });
-
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+ 	date DATE NOT NULL,
+    	source TEXT,                  -- ✅ العمود الجديد
+    	type TEXT NOT NULL,
+    	amount REAL NOT NULL,
+           client_id INTEGER,
+   	client_name TEXT,
+    	vehicle_id INTEGER,
+    	vehicle_number TEXT,
+    	payment_method TEXT DEFAULT 'cash',
+    	description TEXT,
+    	notes TEXT,
+    	status TEXT DEFAULT 'completed',
+    	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    	FOREIGN KEY (client_id) REFERENCES clients (id)
+	)`, (err) => {
+    if (err) console.error('Error creating revenue table:', err);
+    else console.log('✅ Revenue table created');
+	});
         // جدول المصاريف
         this.db.run(`CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
