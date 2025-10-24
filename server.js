@@ -1,22 +1,26 @@
 // backend/server.js
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
 const fs = require('fs');
-const bodyParser = require('body-parser');
-const database = require('./database');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
+const path = require('path');
 
 /* ============================
-   🧨 حذف قاعدة البيانات القديمة (مؤقت لإعادة البناء)
+   🧨 حذف قاعدة البيانات القديمة (مرة واحدة فقط لإعادة البناء)
    ============================ */
 const dbPath = path.join(__dirname, '..', 'adnan_samara.db');
 if (fs.existsSync(dbPath)) {
   fs.unlinkSync(dbPath);
   console.log('🗑️ Deleted old adnan_samara.db to recreate fresh one');
 }
+
+/* ============================
+   باقي الاستدعاءات
+   ============================ */
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const database = require('./database'); // ⬅️ استدعاء بعد الحذف
+
+const app = express();
+const PORT = process.env.PORT || 3000;
 
 /* ============================
    Middleware
