@@ -1,4 +1,3 @@
-// backend/server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -9,20 +8,15 @@ const database = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🧹 حذف قاعدة البيانات القديمة (مؤقتًا لتحديث الجداول)
-const dbPath = path.join(__dirname, '..', 'adnan_samara.db');
-if (fs.existsSync(dbPath)) {
-  fs.unlinkSync(dbPath);
-  console.log('🧹 Old adnan_samara.db deleted - will rebuild clean version');
-}
-
 /* ============================
    Middleware
    ============================ */
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://adnansamara.pages.dev"
+    "https://adnansamara.pages.dev",
+    "https://samara.pages.dev", // ضفها عشان موقعك الجديد
+    "https://adnansamarabackend.onrender.com"
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type"]
