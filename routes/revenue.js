@@ -3,33 +3,50 @@ const express = require("express");
 const router = express.Router();
 const db = require("../database").getConnection();
 
-// ✅ جلب كل الإيرادات
+// ✅ جلب الإيرادات
 router.get("/", (req, res) => {
-  db.all(`SELECT id, date, source, amount, notes, created_at FROM revenue ORDER BY date DESC`, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(rows);
-  });
+  db.all(
+    `SELECT id, date, source, amount, notes, created_at 
+     FROM revenue ORDER BY date DESC`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
 });
 
-// ✅ إضافة إيراد جديد
+// ✅ إضافة إيراد جديد (بافتراضي type = 'manual')
 router.post("/", (req, res) => {
   const { date, source, amount, notes } = req.body;
+
   if (!date || !amount) {
     return res.status(400).json({ error: "الرجاء إدخال التاريخ والمبلغ" });
   }
 
-  const query = `
-    INSERT INTO revenue (date, source, amount, notes, created_at)
-    VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+  const sql = `
+    INSERT INTO revenue (date, source, type, amount, notes, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
   `;
 
-  db.run(query, [date, source || "غير محدد", amount, notes || ""], function (err) {
-    if (err) {
-      console.error("DB Insert Error:", err.message);
-      return res.status(500).json({ error: err.message });
+  db.run(
+    sql,
+    [
+      date,
+      source || "غير محدد",
+      "manual", // ✅ القيمة الافتراضية للنوع
+      amount,
+      notes || "",
+      "completed"
+    ],
+    function (err) {
+      if (err) {
+        console.error("DB Insert Error:", err.message);
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ success: true, id: this.lastID });
     }
-    res.json({ success: true, id: this.lastID });
-  });
+  );
 });
 
 // ✅ حذف إيراد
