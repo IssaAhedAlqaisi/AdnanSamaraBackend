@@ -1,21 +1,20 @@
 // backend/server.js
 const fs = require('fs');
 const path = require('path');
-
-const dbPath = path.join(__dirname, '..', 'adnan_samara.db');
-if (fs.existsSync(dbPath)) {
-  fs.unlinkSync(dbPath);
-  console.log('🗑️ Deleted old adnan_samara.db to recreate fresh one');
-}
-
-/* ============================
-   باقي الاستدعاءات
-   ============================ */
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const database = require('./database'); // ⬅️ استدعاء بعد الحذف
+const database = require('./database'); // ⬅️ استدعاء قاعدة البيانات
 
+/* ============================
+   قاعدة البيانات
+   ============================ */
+const dbPath = path.join(__dirname, '..', 'adnan_samara.db');
+console.log('✅ Using database at:', dbPath);
+
+/* ============================
+   إنشاء التطبيق
+   ============================ */
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -47,8 +46,14 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 /* ============================
    Frontend serving
    ============================ */
+// ✅ لاحظ: هذا الجزء مش ضروري لـ Cloudflare Pages، لكن نخليه احتياطي
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+  const indexPath = path.join(__dirname, '../frontend/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.send('<h1>Adnan Samara Backend is running ✅</h1>');
+  }
 });
 
 app.get('/:page', (req, res) => {
@@ -58,8 +63,9 @@ app.get('/:page', (req, res) => {
     'suppliers', 'vehicles', 'settings'
   ];
 
-  if (validPages.includes(page)) {
-    res.sendFile(path.join(__dirname, `../frontend/${page}.html`));
+  const filePath = path.join(__dirname, `../frontend/${page}.html`);
+  if (validPages.includes(page) && fs.existsSync(filePath)) {
+    res.sendFile(filePath);
   } else {
     res.status(404).json({ error: 'Page not found' });
   }
