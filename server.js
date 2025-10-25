@@ -25,6 +25,7 @@ app.use(cors({
   origin: [
     "http://localhost:3000",
     "https://adnansamara.pages.dev"
+      "https://samara.pages.dev" 
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type"]
