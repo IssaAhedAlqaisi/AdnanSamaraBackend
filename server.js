@@ -2,9 +2,6 @@
 const fs = require('fs');
 const path = require('path');
 
-/* ============================
-   🧨 حذف قاعدة البيانات القديمة (مرة واحدة فقط لإعادة البناء)
-   ============================ */
 const dbPath = path.join(__dirname, '..', 'adnan_samara.db');
 if (fs.existsSync(dbPath)) {
   fs.unlinkSync(dbPath);
