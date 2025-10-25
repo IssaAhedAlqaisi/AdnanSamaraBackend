@@ -29,14 +29,13 @@ router.post('/', (req, res) => {
 
     const sql = `
         INSERT INTO revenue 
-        (date, source, type, amount, notes, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        (date, source, amount, notes, status, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `;
 
     const params = [
         date,
         source || 'غير محدد',
-        'manual', // ✅ نوع العملية افتراضي
         amount,
         notes || '',
         'completed'
@@ -44,7 +43,7 @@ router.post('/', (req, res) => {
 
     db.run(sql, params, function (err) {
         if (err) {
-            console.error('DB Insert Error:', err.message);
+            console.error('❌ DB Insert Error:', err.message);
             return res.status(500).json({ error: err.message });
         }
         res.json({
