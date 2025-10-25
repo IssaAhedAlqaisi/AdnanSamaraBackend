@@ -17,11 +17,8 @@ class Database {
                 console.log('✅ Connected to SQLite database:', this.dbPath);
 
                 // 🧨 نحذف جدول الإيرادات القديم لو موجود (حتى يُعاد بناؤه بالأعمدة الجديدة)
-                this.db.run("DROP TABLE IF EXISTS revenue", (err) => {
-                    if (err) console.error("⚠️ Error dropping old revenue table:", err);
-                    else console.log("🗑️ Old revenue table dropped successfully.");
-                    this.createTables(); // نعيد إنشاء كل الجداول بعد الحذف
-                });
+                   this.createTables();
+ 
             }
         });
     }

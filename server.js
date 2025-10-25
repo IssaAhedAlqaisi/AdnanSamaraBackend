@@ -32,7 +32,6 @@ app.use(cors({
 }));
 
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
 
 /* ============================
    Routes
