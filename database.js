@@ -4,7 +4,7 @@ const path = require('path');
 
 class Database {
     constructor() {
-        this.dbPath = path.join(__dirname, '..', 'adnan_samara.db');
+        this.dbPath = path.join(__dirname, 'adnan_samara.db');
         this.db = null;
         this.init();
     }
