@@ -13,19 +13,19 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 // ============================
-// 🗃️ تحديد مسار قاعدة البيانات
+// 🗃️ تحديد قاعدة البيانات
 // ============================
 const dbPath = path.join(__dirname, 'adnan_samara.db');
 console.log(`✅ Using database at: ${dbPath}`);
 
 // ============================
-// 🌍 إعداد CORS
+// 🌍 إعداد CORS (المواقع المسموح تتصل بالسيرفر)
 // ============================
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://adnansamara.pages.dev",
-    "https://samara.pages.dev"  // ✅ أضفنا الموقع الجديد
+    "https://adnansamarabackend.onrender.com",
+    "https://adnansamara.pages.dev"  // ✅ موقعك الرسمي
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type"]
@@ -76,4 +76,3 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 API available at http://localhost:${PORT}/api`);
 });
-
