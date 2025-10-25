@@ -4,49 +4,75 @@ const router = express.Router();
 const database = require('../database');
 const db = database.getConnection();
 
-// GET جميع الإيرادات
+// ✅ جلب كل الإيرادات
 router.get('/', (req, res) => {
-  const sql = `
-    SELECT id, date, source, amount, notes, created_at
-    FROM revenue ORDER BY id DESC
-  `;
+  const sql = `SELECT id, date, source, type, amount, client_name, vehicle_number, payment_method, description, notes, status
+               FROM revenue ORDER BY date DESC`;
   db.all(sql, [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
 });
 
-// POST إضافة إيراد جديد
+// ✅ إضافة إيراد جديد
 router.post('/', (req, res) => {
-  const { date, source, amount, notes } = req.body;
+  const {
+    date,
+    source,
+    type,
+    amount,
+    client_name,
+    vehicle_number,
+    payment_method,
+    description,
+    notes,
+    status
+  } = req.body;
 
-  if (!date || !source || !amount)
-    return res.status(400).json({ error: 'Date, source, and amount are required' });
+  // التحقق من الحقول الأساسية
+  if (!date || !type || !amount) {
+    return res.status(400).json({ error: 'الحقول (التاريخ، النوع، المبلغ) مطلوبة' });
+  }
 
   const sql = `
-    INSERT INTO revenue (date, source, amount, notes)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO revenue 
+      (date, source, type, amount, client_name, vehicle_number, payment_method, description, notes, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  const params = [date, source, amount, notes || ''];
+
+  const params = [
+    date,
+    source || '',
+    type,
+    amount,
+    client_name || '',
+    vehicle_number || '',
+    payment_method || 'cash',
+    description || '',
+    notes || '',
+    status || 'completed'
+  ];
 
   db.run(sql, params, function (err) {
     if (err) {
-      console.error('❌ DB Insert Error:', err.message);
+      console.error('❌ Error inserting revenue:', err.message);
       return res.status(500).json({ error: err.message });
     }
-    console.log('✅ تم إضافة الإيراد بنجاح:', { id: this.lastID, date, source, amount });
+
     res.json({
       id: this.lastID,
-      date, source, amount, notes
+      message: '✅ Revenue added successfully',
+      data: { id: this.lastID, ...req.body }
     });
   });
 });
 
-// DELETE حذف إيراد
+// ✅ حذف إيراد
 router.delete('/:id', (req, res) => {
-  db.run('DELETE FROM revenue WHERE id = ?', [req.params.id], function (err) {
+  const id = req.params.id;
+  db.run('DELETE FROM revenue WHERE id = ?', [id], function (err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Revenue deleted successfully' });
+    res.json({ message: '🗑️ Revenue deleted successfully' });
   });
 });
 
