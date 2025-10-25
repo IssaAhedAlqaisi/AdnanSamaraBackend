@@ -15,12 +15,14 @@ app.use(cors({
   origin: [
     "http://localhost:3000",
     "https://adnansamara.pages.dev",
-    "https://samara.pages.dev", // ضفها عشان موقعك الجديد
+    "https://samara.pages.dev",
+    "https://adnansamarafrontend.pages.dev",
     "https://adnansamarabackend.onrender.com"
   ],
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type"]
 }));
+
 
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
