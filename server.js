@@ -1,3 +1,4 @@
+// backend/server.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -9,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* ============================
-   Middleware
+   🧠 إعداد CORS (يسمح لكل الدومينات الضرورية)
    ============================ */
 app.use(cors({
   origin: [
@@ -19,11 +20,18 @@ app.use(cors({
     "https://adnansamarafrontend.pages.dev",
     "https://adnansamarabackend.onrender.com"
   ],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  allowedHeaders: ["Content-Type"]
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 
+// دعم preflight requests
+app.options('*', cors());
 
+/* ============================
+   Middleware
+   ============================ */
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
