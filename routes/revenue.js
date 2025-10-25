@@ -1,3 +1,4 @@
+// backend/routes/revenue.js
 const express = require('express');
 const router = express.Router();
 const database = require('../database');
@@ -18,36 +19,45 @@ router.get('/', (req, res) => {
 });
 
 // ===========================
-// ➕ POST /api/revenue - إضافة إيراد جديد
+// ➕ POST /api/revenue - إضافة إيراد جديد (الإصدار المعدل)
 // ===========================
 router.post('/', (req, res) => {
     const { date, source, amount, notes } = req.body;
 
+    // تحقق من المدخلات الأساسية
     if (!date || !amount) {
         return res.status(400).json({ error: 'التاريخ والمبلغ مطلوبان' });
     }
 
     const sql = `
         INSERT INTO revenue 
-        (date, source, amount, notes, status, created_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        (date, source, type, amount, client_id, client_name, vehicle_id, vehicle_number, payment_method, description, notes, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `;
 
     const params = [
         date,
-        source || 'غير محدد',
+        source || 'system',      // المصدر الافتراضي
+        'water_sale',            // النوع الافتراضي
         amount,
-        notes || '',
-        'completed'
+        null,                    // client_id
+        null,                    // client_name
+        null,                    // vehicle_id
+        null,                    // vehicle_number
+        'cash',                  // طريقة الدفع الافتراضية
+        '',                      // الوصف
+        notes || '',             // الملاحظات
+        'completed'              // الحالة
     ];
 
     db.run(sql, params, function (err) {
         if (err) {
-            console.error('❌ DB Insert Error:', err.message);
+            console.error('❌ DB Insert Error (revenue):', err.message);
             return res.status(500).json({ error: err.message });
         }
+
         res.json({
-            message: 'تمت إضافة الإيراد بنجاح ✅',
+            message: '✅ تمت إضافة الإيراد بنجاح',
             revenueId: this.lastID
         });
     });
