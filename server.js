@@ -9,7 +9,7 @@ const database = require('./database'); // ⬅️ استدعاء قاعدة ال
 /* ============================
    قاعدة البيانات
    ============================ */
-const dbPath = path.join(__dirname, '..', 'adnan_samara.db');
+const dbPath = path.join(__dirname, 'adnan_samara.db');
 console.log('✅ Using database at:', dbPath);
 
 /* ============================
