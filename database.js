@@ -15,7 +15,13 @@ class Database {
                 console.error('❌ Error opening database:', err.message);
             } else {
                 console.log('✅ Connected to SQLite database:', this.dbPath);
-                this.createTables();
+
+                // 🧨 نحذف جدول الإيرادات القديم لو موجود (حتى يُعاد بناؤه بالأعمدة الجديدة)
+                this.db.run("DROP TABLE IF EXISTS revenue", (err) => {
+                    if (err) console.error("⚠️ Error dropping old revenue table:", err);
+                    else console.log("🗑️ Old revenue table dropped successfully.");
+                    this.createTables(); // نعيد إنشاء كل الجداول بعد الحذف
+                });
             }
         });
     }
@@ -81,10 +87,11 @@ class Database {
             notes TEXT,
             status TEXT DEFAULT 'completed',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (client_id) REFERENCES clients (id)
         )`, (err) => {
             if (err) console.error('Error creating revenue table:', err);
-            else console.log('✅ Revenue table created');
+            else console.log('✅ Revenue table created (with source + type)');
         });
 
         // جدول المصاريف
@@ -140,7 +147,7 @@ class Database {
             else console.log('✅ Vehicles table created');
         });
 
-        // بعد إنشاء الجداول، نضيف البيانات التجريبية
+        // بعد الإنشاء، نضيف البيانات التجريبية
         setTimeout(() => {
             this.insertSampleData();
         }, 1000);
@@ -149,7 +156,6 @@ class Database {
     insertSampleData() {
         this.db.get("SELECT COUNT(*) as count FROM clients", (err, row) => {
             if (err) return console.error('Error checking existing data:', err);
-
             if (row.count === 0) {
                 console.log('📝 Inserting sample data...');
                 this.insertSampleClients();
@@ -166,106 +172,74 @@ class Database {
 
     insertSampleClients() {
         const clients = [
-            ['محمود العواملة', '0798123456', 'mahmoud@email.com', 'الزرقاء', 'حي معصوم', 'regular', 'reference', 'عميل نشط', 15, 4250, '2025-10-15', 'active'],
-            ['سعيد أبو رمان', '0789654321', 'saeed@email.com', 'عمان', 'ماركا', 'regular', 'advertisement', 'عميل جديد', 8, 2100, '2025-10-14', 'new']
+            ['محمود العواملة', '0798123456', 'mahmoud@email.com', 'الزرقاء', 'حي معصوم', 'regular', 'reference', 'عميل نشط', 15, 4250, '2025-10-15', 'active']
         ];
-
         const stmt = this.db.prepare(`INSERT INTO clients 
             (name, phone, email, area, address, type, source, notes, total_orders, total_purchases, last_order, status) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-
-        clients.forEach((c, i) => stmt.run(c, (err) => {
-            if (err) console.error('Error inserting client:', err);
-            else if (i === clients.length - 1) console.log('✅ Sample clients inserted');
-        }));
-
+        clients.forEach(c => stmt.run(c));
         stmt.finalize();
+        console.log('✅ Sample clients inserted');
     }
 
     insertSampleEmployees() {
         const employees = [
             ['أحمد الخلايلة', 'سائق', 'drivers', 700, '0791234567', '123456789', '2024-03-01', 'active', '{}', 'موظف متميز']
         ];
-
         const stmt = this.db.prepare(`INSERT INTO employees 
-            (name, job_title, department, salary, phone, social_number, hire_date, status, documents, notes) 
+            (name, job_title, department, salary, phone, social_number, hire_date, status, documents, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-
-        employees.forEach((e, i) => stmt.run(e, (err) => {
-            if (err) console.error('Error inserting employee:', err);
-            else if (i === employees.length - 1) console.log('✅ Sample employees inserted');
-        }));
-
+        employees.forEach(e => stmt.run(e));
         stmt.finalize();
+        console.log('✅ Sample employees inserted');
     }
 
     insertSampleRevenue() {
         const revenue = [
-            ['2025-10-15', 'system', 'water_sale', 350, 1, 'محمود العواملة', 1, 'J-2025', 'cash', 'بيع مياه', '', 'completed'],
-            ['2025-10-14', 'manual', 'service', 120, 2, 'سعيد أبو رمان', 3, 'J-2234', 'transfer', 'خدمة إضافية', '', 'completed']
+            ['2025-10-15', 'system', 'water_sale', 350, 1, 'محمود العواملة', 1, 'J-2025', 'cash', 'بيع مياه', '', 'completed']
         ];
-
         const stmt = this.db.prepare(`INSERT INTO revenue 
             (date, source, type, amount, client_id, client_name, vehicle_id, vehicle_number, payment_method, description, notes, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-
-        revenue.forEach((r, i) => stmt.run(r, (err) => {
-            if (err) console.error('Error inserting revenue:', err);
-            else if (i === revenue.length - 1) console.log('✅ Sample revenue inserted');
-        }));
-
+        revenue.forEach(r => stmt.run(r));
         stmt.finalize();
+        console.log('✅ Sample revenue inserted');
     }
 
     insertSampleExpenses() {
         const expenses = [
             ['2025-10-15', 'fuel', 850, 'fuel', 'محطة وقود الزرقاء', 'cash', 'شراء وقود', '', 'paid']
         ];
-
         const stmt = this.db.prepare(`INSERT INTO expenses 
-            (date, type, amount, category, recipient, payment_method, description, notes, status) 
+            (date, type, amount, category, recipient, payment_method, description, notes, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-
-        expenses.forEach((ex, i) => stmt.run(ex, (err) => {
-            if (err) console.error('Error inserting expense:', err);
-            else if (i === expenses.length - 1) console.log('✅ Sample expenses inserted');
-        }));
-
+        expenses.forEach(ex => stmt.run(ex));
         stmt.finalize();
+        console.log('✅ Sample expenses inserted');
     }
 
     insertSampleSuppliers() {
         const suppliers = [
             ['بئر الرشيد', 'well', 'الزرقاء - الرشيد', '0791234567', 0.30, 25, '1000 لتر', 'بئر نشط', 'active']
         ];
-
         const stmt = this.db.prepare(`INSERT INTO suppliers 
-            (name, source_type, area, phone, price_per_meter, price_per_tank, capacity, notes, status) 
+            (name, source_type, area, phone, price_per_meter, price_per_tank, capacity, notes, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-
-        suppliers.forEach((s, i) => stmt.run(s, (err) => {
-            if (err) console.error('Error inserting supplier:', err);
-            else if (i === suppliers.length - 1) console.log('✅ Sample suppliers inserted');
-        }));
-
+        suppliers.forEach(s => stmt.run(s));
         stmt.finalize();
+        console.log('✅ Sample suppliers inserted');
     }
 
     insertSampleVehicles() {
         const vehicles = [
             ['J-2025', 'أحمد الزبن', 'الزرقاء - الوسط التجاري', '5000 لتر', 'تويوتا 2023', 'active', '2025-09-01', 'مركبة رئيسية']
         ];
-
         const stmt = this.db.prepare(`INSERT INTO vehicles 
             (number, driver_name, current_location, capacity, model, status, last_maintenance, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-
-        vehicles.forEach((v, i) => stmt.run(v, (err) => {
-            if (err) console.error('Error inserting vehicle:', err);
-            else if (i === vehicles.length - 1) console.log('✅ Sample vehicles inserted');
-        }));
-
+        vehicles.forEach(v => stmt.run(v));
         stmt.finalize();
+        console.log('✅ Sample vehicles inserted');
     }
 
     getConnection() {
