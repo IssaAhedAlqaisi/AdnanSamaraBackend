@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const database = require('../database');
-const db = database.getConnection();
+const db = database.getConnection(); // PostgreSQL pool instance
 
 /* ==================== GET - جلب جميع المصاريف ==================== */
 router.get('/', (req, res) => {
@@ -11,12 +11,13 @@ router.get('/', (req, res) => {
     FROM expenses
     ORDER BY id DESC
   `;
-  db.all(sql, [], (err, rows) => {
+
+  db.query(sql, (err, result) => {
     if (err) {
       console.error("❌ Database error (GET):", err.message);
       return res.status(500).json({ error: err.message });
     }
-    res.json(rows);
+    res.json(result.rows);
   });
 });
 
@@ -31,7 +32,8 @@ router.post('/', (req, res) => {
   const sql = `
     INSERT INTO expenses 
     (date, type, category, amount, recipient, payment_method, description, notes, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    RETURNING *
   `;
   const params = [
     date,
@@ -45,29 +47,19 @@ router.post('/', (req, res) => {
     'paid'
   ];
 
-  db.run(sql, params, function (err) {
+  db.query(sql, params, (err, result) => {
     if (err) {
       console.error("❌ Database error (INSERT):", err.message);
       return res.status(500).json({ error: err.message });
     }
 
-    console.log(`✅ تم إضافة المصروف (ID: ${this.lastID}) بنجاح!`);
+    const expense = result.rows[0];
+    console.log(`✅ تم إضافة المصروف (ID: ${expense.id}) بنجاح!`);
 
     res.json({
       message: '✅ تمت إضافة المصروف بنجاح',
-      id: this.lastID,
-      expense: {
-        id: this.lastID,
-        date,
-        type,
-        category,
-        amount,
-        recipient,
-        payment_method,
-        description,
-        notes,
-        status: 'paid'
-      }
+      id: expense.id,
+      expense
     });
   });
 });
@@ -75,11 +67,18 @@ router.post('/', (req, res) => {
 /* ==================== DELETE - حذف مصروف ==================== */
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
-  db.run('DELETE FROM expenses WHERE id = ?', [id], function (err) {
+  const sql = 'DELETE FROM expenses WHERE id = $1';
+
+  db.query(sql, [id], (err, result) => {
     if (err) {
       console.error("❌ Database error (DELETE):", err.message);
       return res.status(500).json({ error: err.message });
     }
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: '⚠️ لم يتم العثور على المصروف المطلوب حذفه' });
+    }
+
     res.json({ message: '🗑️ تم حذف المصروف بنجاح' });
   });
 });
