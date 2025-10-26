@@ -5,10 +5,7 @@ const path = require('path');
 /** يضيف الأعمدة المفقودة في جدول revenue بدون فقدان بيانات */
 function ensureRevenueColumns(db) {
   db.all(`PRAGMA table_info(revenue)`, (err, rows) => {
-    if (err) {
-      console.error('❌ PRAGMA error (revenue):', err);
-      return;
-    }
+    if (err) { console.error('❌ PRAGMA error (revenue):', err); return; }
     const cols = rows.map(r => r.name);
     const add = (name, sql) => {
       if (!cols.includes(name)) {
@@ -20,7 +17,6 @@ function ensureRevenueColumns(db) {
         console.log(`ℹ️ revenue column '${name}' exists`);
       }
     };
-
     add('source',     `ALTER TABLE revenue ADD COLUMN source TEXT DEFAULT 'system'`);
     add('type',       `ALTER TABLE revenue ADD COLUMN type TEXT DEFAULT 'water_sale'`);
     add('notes',      `ALTER TABLE revenue ADD COLUMN notes TEXT`);
@@ -29,10 +25,38 @@ function ensureRevenueColumns(db) {
   });
 }
 
+/** يضيف الأعمدة المفقودة في جدول العملاء بدون فقدان بيانات */
+function ensureClientsColumns(db) {
+  db.all(`PRAGMA table_info(clients)`, (err, rows) => {
+    if (err) { console.error('❌ PRAGMA error (clients):', err); return; }
+    const cols = rows.map(r => r.name);
+    const add = (name, sql) => {
+      if (!cols.includes(name)) {
+        db.run(sql, e => {
+          if (e) console.error(`❌ ALTER clients add ${name} failed:`, e.message);
+          else console.log(`✅ clients column '${name}' added`);
+        });
+      } else {
+        console.log(`ℹ️ clients column '${name}' exists`);
+      }
+    };
+    add('email',            `ALTER TABLE clients ADD COLUMN email TEXT`);
+    add('address',          `ALTER TABLE clients ADD COLUMN address TEXT`);
+    add('type',             `ALTER TABLE clients ADD COLUMN type TEXT DEFAULT 'regular'`);
+    add('source',           `ALTER TABLE clients ADD COLUMN source TEXT DEFAULT 'reference'`);
+    add('notes',            `ALTER TABLE clients ADD COLUMN notes TEXT`);
+    add('total_orders',     `ALTER TABLE clients ADD COLUMN total_orders INTEGER DEFAULT 0`);
+    add('total_purchases',  `ALTER TABLE clients ADD COLUMN total_purchases REAL DEFAULT 0`);
+    add('last_order',       `ALTER TABLE clients ADD COLUMN last_order DATE`);
+    add('status',           `ALTER TABLE clients ADD COLUMN status TEXT DEFAULT 'active'`);
+    add('created_at',       `ALTER TABLE clients ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
+    add('updated_at',       `ALTER TABLE clients ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP`);
+  });
+}
+
 class Database {
   constructor() {
-    // نخزن القاعدة داخل مجلد backend
-    this.dbPath = path.join(__dirname, 'adnan_samara.db');
+    this.dbPath = path.join(__dirname, 'adnan_samara.db'); // القاعدة داخل backend
     this.db = null;
     this.init();
   }
@@ -51,7 +75,7 @@ class Database {
   createTables() {
     console.log('📊 Creating database tables...');
 
-    // جدول العملاء
+    // clients
     this.db.run(`CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -73,7 +97,7 @@ class Database {
       else console.log('✅ Clients table created');
     });
 
-    // جدول الموظفين
+    // employees
     this.db.run(`CREATE TABLE IF NOT EXISTS employees (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -93,7 +117,7 @@ class Database {
       else console.log('✅ Employees table created');
     });
 
-    // جدول الإيرادات
+    // revenue
     this.db.run(`CREATE TABLE IF NOT EXISTS revenue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date DATE NOT NULL,
@@ -116,7 +140,7 @@ class Database {
       else console.log('✅ Revenue table created (with source + type)');
     });
 
-    // جدول المصاريف
+    // expenses
     this.db.run(`CREATE TABLE IF NOT EXISTS expenses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date DATE NOT NULL,
@@ -134,7 +158,7 @@ class Database {
       else console.log('✅ Expenses table created');
     });
 
-    // جدول الموردين
+    // suppliers
     this.db.run(`CREATE TABLE IF NOT EXISTS suppliers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -152,7 +176,7 @@ class Database {
       else console.log('✅ Suppliers table created');
     });
 
-    // جدول المركبات
+    // vehicles
     this.db.run(`CREATE TABLE IF NOT EXISTS vehicles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       number TEXT NOT NULL UNIQUE,
@@ -169,12 +193,13 @@ class Database {
       else console.log('✅ Vehicles table created');
     });
 
-    // بعد الإنشاء: نرقي جدول الإيرادات لو ناقص أعمدة
+    // ترقيات الجداول (بدون حذف بيانات)
     setTimeout(() => {
       ensureRevenueColumns(this.db);
+      ensureClientsColumns(this.db);
     }, 500);
 
-    // بعد لحظة: نضيف بيانات تجريبية إذا ما في بيانات
+    // إضافة بيانات تجريبية عند القاعدة الفارغة
     setTimeout(() => {
       this.insertSampleData();
     }, 1000);
@@ -269,9 +294,7 @@ class Database {
     console.log('✅ Sample vehicles inserted');
   }
 
-  getConnection() {
-    return this.db;
-  }
+  getConnection() { return this.db; }
 
   close() {
     if (this.db) {
