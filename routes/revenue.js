@@ -4,128 +4,69 @@ const router = express.Router();
 const database = require('../database');
 const db = database.getConnection();
 
-// ===========================
-// 📦 GET /api/revenue - جلب كل الإيرادات
-// ===========================
+/* ===========================
+   GET /api/revenue  — جلب الإيرادات
+   =========================== */
 router.get('/', (req, res) => {
-    const sql = `SELECT * FROM revenue ORDER BY date DESC`;
-    db.all(sql, [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching revenue:', err);
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(rows);
-    });
-});
-
-// ===========================
-// ➕ POST /api/revenue - إضافة إيراد جديد (الإصدار المعدل)
-// ===========================
-router.post('/', (req, res) => {
-    const { date, source, amount, notes } = req.body;
-
-    // تحقق من المدخلات الأساسية
-    if (!date || !amount) {
-        return res.status(400).json({ error: 'التاريخ والمبلغ مطلوبان' });
+  const sql = `
+    SELECT id, date, source, type, amount, notes, status, created_at
+    FROM revenue
+    ORDER BY date DESC, id DESC
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error('❌ Error fetching revenue:', err);
+      return res.status(500).json({ error: err.message });
     }
-
-    const sql = `
-        INSERT INTO revenue 
-        (date, source, type, amount, client_id, client_name, vehicle_id, vehicle_number, payment_method, description, notes, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
-    `;
-
-    const params = [
-        date,
-        source || 'system',      // المصدر الافتراضي
-        'water_sale',            // النوع الافتراضي
-        amount,
-        null,                    // client_id
-        null,                    // client_name
-        null,                    // vehicle_id
-        null,                    // vehicle_number
-        'cash',                  // طريقة الدفع الافتراضية
-        '',                      // الوصف
-        notes || '',             // الملاحظات
-        'completed'              // الحالة
-    ];
-
-    db.run(sql, params, function (err) {
-        if (err) {
-            console.error('❌ DB Insert Error (revenue):', err.message);
-            return res.status(500).json({ error: err.message });
-        }
-
-        res.json({
-            message: '✅ تمت إضافة الإيراد بنجاح',
-            revenueId: this.lastID
-        });
-    });
+    res.json(rows);
+  });
 });
 
-// ===========================
-// ✏️ PUT /api/revenue/:id - تعديل الإيراد
-// ===========================
-router.put('/:id', (req, res) => {
-    const { date, source, amount, notes, status } = req.body;
+/* ===========================
+   POST /api/revenue — إضافة إيراد
+   =========================== */
+router.post('/', (req, res) => {
+  // لوج تشخيصي — شو اللي وصل من الواجهة
+  console.log('📥 POST /api/revenue body =>', req.body);
 
-    const sql = `
-        UPDATE revenue
-        SET date = ?, source = ?, amount = ?, notes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    `;
+  const { date, source, type, amount, notes } = req.body || {};
 
-    const params = [date, source, amount, notes, status, req.params.id];
+  const amt = Number(amount);
+  const src = (source && String(source).trim()) || 'غير محدد';
+  const typ = (type && String(type).trim()) || 'water_sale';
+  const nts = (notes && String(notes).trim()) || '';
 
-    db.run(sql, params, function (err) {
-        if (err) {
-            console.error('Error updating revenue:', err);
-            return res.status(500).json({ error: err.message });
-        }
-        if (this.changes === 0) {
-            return res.status(404).json({ error: 'الإيراد غير موجود' });
-        }
-        res.json({ message: 'تم تعديل الإيراد بنجاح ✅' });
-    });
+  if (!date || !Number.isFinite(amt)) {
+    return res.status(400).json({ error: 'التاريخ والمبلغ مطلوبان' });
+  }
+
+  const sql = `
+    INSERT INTO revenue (date, source, type, amount, notes, status, created_at)
+    VALUES (?, ?, ?, ?, ?, 'completed', datetime('now','localtime'))
+  `;
+  const params = [date, src, typ, amt, nts];
+
+  db.run(sql, params, function (err) {
+    if (err) {
+      console.error('❌ DB Insert Error (revenue):', err);
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: 'تمت إضافة الإيراد بنجاح ✅', id: this.lastID });
+  });
 });
 
-// ===========================
-// ❌ DELETE /api/revenue/:id - حذف الإيراد
-// ===========================
+/* ===========================
+   DELETE /api/revenue/:id — حذف
+   =========================== */
 router.delete('/:id', (req, res) => {
-    const sql = `DELETE FROM revenue WHERE id = ?`;
-
-    db.run(sql, [req.params.id], function (err) {
-        if (err) {
-            console.error('Error deleting revenue:', err);
-            return res.status(500).json({ error: err.message });
-        }
-        if (this.changes === 0) {
-            return res.status(404).json({ error: 'الإيراد غير موجود' });
-        }
-        res.json({ message: 'تم حذف الإيراد بنجاح 🗑️' });
-    });
-});
-
-// ===========================
-// 📈 GET /api/revenue/stats - إحصائيات الإيرادات
-// ===========================
-router.get('/stats/summary', (req, res) => {
-    const sql = `
-        SELECT 
-            COUNT(*) as total_revenue,
-            SUM(amount) as total_amount,
-            SUM(CASE WHEN status = 'completed' THEN amount ELSE 0 END) as completed_amount
-        FROM revenue
-    `;
-
-    db.get(sql, [], (err, row) => {
-        if (err) {
-            console.error('Error fetching revenue stats:', err);
-            return res.status(500).json({ error: err.message });
-        }
-        res.json(row);
-    });
+  db.run(`DELETE FROM revenue WHERE id = ?`, [req.params.id], function (err) {
+    if (err) {
+      console.error('❌ Error deleting revenue:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    if (!this.changes) return res.status(404).json({ error: 'الإيراد غير موجود' });
+    res.json({ message: 'تم حذف الإيراد 🗑️' });
+  });
 });
 
 module.exports = router;
