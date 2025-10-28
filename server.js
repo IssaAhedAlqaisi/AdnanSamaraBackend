@@ -2,15 +2,12 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const bodyParser = require('body-parser');
-const database = require('./database');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 /* ============================
-   🧠 إعداد CORS (يسمح لكل الدومينات الضرورية)
+   🧠 إعداد CORS (السماح للواجهات الأمامية الموثوقة)
    ============================ */
 app.use(cors({
   origin: [
@@ -33,7 +30,6 @@ app.options('*', cors());
    Middleware
    ============================ */
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
 
 /* ============================
    Routes
@@ -47,28 +43,27 @@ app.use('/api/vehicles', require('./routes/vehicles'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 
 /* ============================
-   Frontend serving
+   🧭 مسار رئيسي بسيط على Render (بدل frontend المحلي)
    ============================ */
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
-
-app.get('/:page', (req, res) => {
-  const page = req.params.page;
-  const validPages = [
-    'clients', 'employees', 'revenue', 'expenses',
-    'suppliers', 'vehicles', 'settings'
-  ];
-
-  if (validPages.includes(page)) {
-    res.sendFile(path.join(__dirname, `../frontend/${page}.html`));
-  } else {
-    res.status(404).json({ error: 'Page not found' });
-  }
+  res.json({
+    status: '✅ Backend is running',
+    message: 'Welcome to Adnan Samara Water Backend API',
+    available_endpoints: [
+      '/api/clients',
+      '/api/employees',
+      '/api/revenue',
+      '/api/expenses',
+      '/api/suppliers',
+      '/api/vehicles',
+      '/api/dashboard',
+      '/api/health'
+    ]
+  });
 });
 
 /* ============================
-   Health check
+   Health check endpoint
    ============================ */
 app.get('/api/health', (req, res) => {
   res.json({
@@ -99,6 +94,4 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📊 API available at http://localhost:${PORT}/api`);
-  console.log(`🌐 Frontend available at http://localhost:${PORT}`);
 });
-// force redeploy

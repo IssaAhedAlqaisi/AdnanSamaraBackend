@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const database = require('../database');
-const db = database.getConnection(); // pg.Pool instance
+const db = require('../database'); // pg.Pool instance
 
 // 🟢 GET - جميع العملاء
 router.get('/', (req, res) => {
