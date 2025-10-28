@@ -162,4 +162,4 @@ function getConnection() {
   return pool;
 }
 
-module.exports = { getConnection };
+module.exports = getConnection();
