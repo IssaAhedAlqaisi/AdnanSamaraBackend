@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const database = require('../database');
-const db = database.getConnection(); // PostgreSQL pool instance
+const db = require("../database"); // PostgreSQL pool instance
 
 /* ==================== GET - جلب جميع المصاريف ==================== */
 router.get('/', (req, res) => {

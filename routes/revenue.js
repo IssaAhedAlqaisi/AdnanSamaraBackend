@@ -1,7 +1,7 @@
 // backend/routes/revenue.js
 const express = require("express");
 const router = express.Router();
-const pool = require("../database");
+const db = require("../database");
 
 /* 📅 Helper لتنسيق التاريخ */
 function normalizeDate() {

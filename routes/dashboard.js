@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const database = require("../database");
-const db = database.getConnection();
+const db = require("../database");;
 
 // 🔹 إجمالي الإيرادات والمصاريف + عدد الموظفين والمركبات
 router.get("/stats", (req, res) => {
