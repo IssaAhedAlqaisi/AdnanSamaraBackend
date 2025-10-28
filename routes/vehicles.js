@@ -1,84 +1,84 @@
-// backend/routes/vehicles.js
 const express = require('express');
 const router = express.Router();
-const database = require('../database');
-const db = database.getConnection();
+const { getConnection } = require('../database');
+const pool = getConnection();
 
-/* ==================== GET - جلب جميع المركبات ==================== */
-router.get('/', (req, res) => {
-  const sql = `
-    SELECT id, number, driver_name, current_location, capacity, model, status, notes, created_at 
-    FROM vehicles
-    ORDER BY id DESC
-  `;
-
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("❌ Database error (GET vehicles):", err.message);
-      return res.status(500).json({ error: err.message });
-    }
-    res.json(result.rows);
-  });
-});
-
-/* ==================== POST - إضافة مركبة جديدة ==================== */
-router.post('/', (req, res) => {
-  const { number, driver_name, current_location, capacity, model, status, notes } = req.body;
-
-  if (!number) {
-    return res.status(400).json({ error: '⚠️ رقم المركبة مطلوب' });
+/* ==========================
+   🚛 المركبات الأساسية
+   ========================== */
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM vehicles ORDER BY id DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const sql = `
-    INSERT INTO vehicles 
-    (number, driver_name, current_location, capacity, model, status, notes)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
-    RETURNING *
-  `;
-
-  const params = [
-    number,
-    driver_name || '',
-    current_location || '',
-    capacity || '',
-    model || '',
-    status || 'active',
-    notes || ''
-  ];
-
-  db.query(sql, params, (err, result) => {
-    if (err) {
-      console.error("❌ Database error (INSERT vehicle):", err.message);
-      return res.status(500).json({ error: err.message });
-    }
-
-    const vehicle = result.rows[0];
-    console.log(`✅ تمت إضافة المركبة (ID: ${vehicle.id}) بنجاح!`);
-
-    res.json({
-      message: '✅ تمت إضافة المركبة بنجاح',
-      id: vehicle.id,
-      vehicle
-    });
-  });
 });
 
-/* ==================== DELETE - حذف مركبة ==================== */
-router.delete('/:id', (req, res) => {
-  const sql = `DELETE FROM vehicles WHERE id = $1`;
+router.post('/', async (req, res) => {
+  const { number, driver_name, current_location, capacity, model, status, notes } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO vehicles (number, driver_name, current_location, capacity, model, status, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [number, driver_name, current_location, capacity, model, status, notes]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  db.query(sql, [req.params.id], (err, result) => {
-    if (err) {
-      console.error("❌ Database error (DELETE vehicle):", err.message);
-      return res.status(500).json({ error: err.message });
-    }
+router.delete('/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM vehicles WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: '⚠️ المركبة غير موجودة' });
-    }
+/* ==========================
+   🚚 Vehicle Logs (عداد المركبات)
+   ========================== */
+(async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS vehicle_logs (
+      id SERIAL PRIMARY KEY,
+      date DATE DEFAULT CURRENT_DATE,
+      driver_name TEXT NOT NULL,
+      vehicle_number TEXT NOT NULL,
+      odometer_start REAL,
+      odometer_end REAL,
+      distance REAL GENERATED ALWAYS AS (odometer_end - odometer_start) STORED,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+})();
 
-    res.json({ message: '🗑️ تم حذف المركبة بنجاح' });
-  });
+router.get('/logs', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`SELECT * FROM vehicle_logs ORDER BY id DESC`);
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching logs:', err.message);
+    res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
+
+router.post('/logs', async (req, res) => {
+  const { driver_name, vehicle_number, odometer_start, odometer_end } = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO vehicle_logs (driver_name, vehicle_number, odometer_start, odometer_end)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [driver_name, vehicle_number, odometer_start, odometer_end]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error inserting vehicle log:', err.message);
+    res.status(500).json({ error: 'Failed to add log' });
+  }
 });
 
 module.exports = router;
