@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { pool } = require('../database');
+const { getConnection } = require('../database');
+const pool = getConnection();
+
 
 /* ==========================
    🚛 المركبات الأساسية
