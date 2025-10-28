@@ -1,97 +1,96 @@
 // backend/routes/revenue.js
 const express = require('express');
 const router = express.Router();
-const database = require('../database');
-const db = database.getConnection();
+const db = require('../database').getConnection();
 
-/* Helper: تنسيق التاريخ إلى YYYY-MM-DD */
+/* ✅ Helper لتنسيق التاريخ */
 function normalizeDate(input) {
-  if (!input) return '';
+  if (!input) return new Date().toISOString().slice(0, 10);
   const d = new Date(input);
   if (!isNaN(d)) return d.toISOString().slice(0, 10);
-  const m = String(input).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return input;
-  const m2 = String(input).match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m2) {
-    const mm = String(m2[1]).padStart(2, '0');
-    const dd = String(m2[2]).padStart(2, '0');
-    const yyyy = m2[3];
-    return `${yyyy}-${mm}-${dd}`;
-  }
-  return String(input);
+  return new Date().toISOString().slice(0, 10);
 }
 
-/* ==================== GET - جميع الإيرادات ==================== */
-router.get('/', (req, res) => {
-  const sql = `
-    SELECT id, date, source, type, amount, notes, status, created_at
-    FROM revenue
-    ORDER BY date DESC, id DESC
-  `;
+/* ==================== GET - جميع الإيرادات مع الفلاتر ==================== */
+router.get('/', async (req, res) => {
+  try {
+    const { date_from, date_to } = req.query;
+    let sql = `SELECT id, date, source, type, amount, notes, status, created_at FROM revenue`;
+    const params = [];
 
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error('❌ Error fetching revenue:', err);
-      return res.status(500).json({ error: err.message });
+    if (date_from && date_to) {
+      sql += ` WHERE date BETWEEN $1 AND $2 ORDER BY date DESC`;
+      params.push(date_from, date_to);
+    } else {
+      sql += ` ORDER BY date DESC`;
     }
+
+    const result = await db.query(sql, params);
     res.json(result.rows);
-  });
+  } catch (err) {
+    console.error('❌ Error fetching revenue:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* ==================== POST - إضافة إيراد جديد ==================== */
-router.post('/', (req, res) => {
-  console.log('📥 POST /api/revenue body =>', req.body);
+router.post('/', async (req, res) => {
+  try {
+    const {
+      amount,
+      payment_type,   // كاش / ذمم / فيزا
+      tank_type,      // نوع النقلة (3 متر، 8 متر، ...)
+      water_amount,   // كمية المياه
+      source_type,    // مصدر الماء (ذمم / نقد)
+      driver_name,    // اسم السائق
+      vehicle_number, // رقم السيارة
+      notes
+    } = req.body;
 
-  const { date, source, type, amount, notes } = req.body || {};
-  const dt = normalizeDate(date);
-  const amt = Number(amount);
-  const src = (source && String(source).trim()) || 'غير محدد';
-  const typ = (type && String(type).trim()) || 'water_sale';
-  const nts = (notes && String(notes).trim()) || '';
-
-  if (!dt || !Number.isFinite(amt)) {
-    return res.status(400).json({ error: '⚠️ التاريخ والمبلغ مطلوبان' });
-  }
-
-  const sql = `
-    INSERT INTO revenue (date, source, type, amount, notes, status, created_at)
-    VALUES ($1, $2, $3, $4, $5, 'completed', NOW())
-    RETURNING *
-  `;
-  const params = [dt, src, typ, amt, nts];
-
-  db.query(sql, params, (err, result) => {
-    if (err) {
-      console.error('❌ DB Insert Error (revenue):', err);
-      return res.status(500).json({ error: err.message });
+    if (!amount || !payment_type || !tank_type) {
+      return res.status(400).json({ error: '⚠️ المبلغ ونوع الدفع والنقلة مطلوبة' });
     }
 
-    const revenue = result.rows[0];
-    console.log(`✅ تمت إضافة الإيراد (ID: ${revenue.id}) بنجاح!`);
-    res.json({
-      message: '✅ تمت إضافة الإيراد بنجاح',
-      id: revenue.id,
-      revenue
-    });
-  });
+    const date = normalizeDate(new Date());
+    const meta = {
+      payment_type,
+      tank_type,
+      water_amount,
+      source_type,
+      driver_name,
+      vehicle_number
+    };
+
+    const fullNotes =
+      (notes ? notes.trim() + ' ' : '') + '##META##' + JSON.stringify(meta);
+
+    const sql = `
+      INSERT INTO revenue (date, source, type, amount, notes, status, created_at)
+      VALUES ($1, $2, $3, $4, $5, 'completed', NOW())
+      RETURNING *
+    `;
+    const params = [source_type || 'غير محدد', payment_type, amount, fullNotes];
+
+    const result = await db.query(sql, params);
+    const row = result.rows[0];
+    res.json({ message: '✅ تمت إضافة الإيراد بنجاح', revenue: row });
+  } catch (err) {
+    console.error('❌ Error inserting revenue:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* ==================== DELETE - حذف إيراد ==================== */
-router.delete('/:id', (req, res) => {
-  const sql = `DELETE FROM revenue WHERE id = $1`;
-
-  db.query(sql, [req.params.id], (err, result) => {
-    if (err) {
-      console.error('❌ Error deleting revenue:', err);
-      return res.status(500).json({ error: err.message });
-    }
-
-    if (result.rowCount === 0) {
+router.delete('/:id', async (req, res) => {
+  try {
+    const result = await db.query(`DELETE FROM revenue WHERE id = $1`, [req.params.id]);
+    if (result.rowCount === 0)
       return res.status(404).json({ error: '⚠️ الإيراد غير موجود' });
-    }
-
     res.json({ message: '🗑️ تم حذف الإيراد بنجاح' });
-  });
+  } catch (err) {
+    console.error('❌ Error deleting revenue:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
