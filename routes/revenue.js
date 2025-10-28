@@ -1,7 +1,8 @@
 // backend/routes/revenue.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../database').getConnection();
+const { getConnection } = require("../database");
+const db = getConnection();
 
 /* ✅ Helper لتنسيق التاريخ */
 function normalizeDate(input) {
@@ -12,7 +13,7 @@ function normalizeDate(input) {
 }
 
 /* ==================== GET - جميع الإيرادات مع الفلاتر ==================== */
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const { date_from, date_to } = req.query;
     let sql = `SELECT id, date, source, type, amount, notes, status, created_at FROM revenue`;
@@ -28,27 +29,29 @@ router.get('/', async (req, res) => {
     const result = await db.query(sql, params);
     res.json(result.rows);
   } catch (err) {
-    console.error('❌ Error fetching revenue:', err);
+    console.error("❌ Error fetching revenue:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* ==================== POST - إضافة إيراد جديد ==================== */
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const {
       amount,
-      payment_type,   // كاش / ذمم / فيزا
-      tank_type,      // نوع النقلة (3 متر، 8 متر، ...)
-      water_amount,   // كمية المياه
-      source_type,    // مصدر الماء (ذمم / نقد)
-      driver_name,    // اسم السائق
+      payment_type, // كاش / ذمم / فيزا
+      tank_type, // نوع النقلة (3 متر، 8 متر، ...)
+      water_amount, // كمية المياه
+      source_type, // مصدر الماء (ذمم / نقد)
+      driver_name, // اسم السائق
       vehicle_number, // رقم السيارة
-      notes
+      notes,
     } = req.body;
 
     if (!amount || !payment_type || !tank_type) {
-      return res.status(400).json({ error: '⚠️ المبلغ ونوع الدفع والنقلة مطلوبة' });
+      return res
+        .status(400)
+        .json({ error: "⚠️ المبلغ ونوع الدفع والنقلة مطلوبة" });
     }
 
     const date = normalizeDate(new Date());
@@ -58,37 +61,39 @@ router.post('/', async (req, res) => {
       water_amount,
       source_type,
       driver_name,
-      vehicle_number
+      vehicle_number,
     };
 
     const fullNotes =
-      (notes ? notes.trim() + ' ' : '') + '##META##' + JSON.stringify(meta);
+      (notes ? notes.trim() + " " : "") + "##META##" + JSON.stringify(meta);
 
     const sql = `
       INSERT INTO revenue (date, source, type, amount, notes, status, created_at)
       VALUES ($1, $2, $3, $4, $5, 'completed', NOW())
       RETURNING *
     `;
-    const params = [source_type || 'غير محدد', payment_type, amount, fullNotes];
+    const params = [date, source_type || "غير محدد", payment_type, amount, fullNotes];
 
     const result = await db.query(sql, params);
     const row = result.rows[0];
-    res.json({ message: '✅ تمت إضافة الإيراد بنجاح', revenue: row });
+    res.json({ message: "✅ تمت إضافة الإيراد بنجاح", revenue: row });
   } catch (err) {
-    console.error('❌ Error inserting revenue:', err);
+    console.error("❌ Error inserting revenue:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* ==================== DELETE - حذف إيراد ==================== */
-router.delete('/:id', async (req, res) => {
+router.delete("/:id", async (req, res) => {
   try {
-    const result = await db.query(`DELETE FROM revenue WHERE id = $1`, [req.params.id]);
+    const result = await db.query(`DELETE FROM revenue WHERE id = $1`, [
+      req.params.id,
+    ]);
     if (result.rowCount === 0)
-      return res.status(404).json({ error: '⚠️ الإيراد غير موجود' });
-    res.json({ message: '🗑️ تم حذف الإيراد بنجاح' });
+      return res.status(404).json({ error: "⚠️ الإيراد غير موجود" });
+    res.json({ message: "🗑️ تم حذف الإيراد بنجاح" });
   } catch (err) {
-    console.error('❌ Error deleting revenue:', err);
+    console.error("❌ Error deleting revenue:", err);
     res.status(500).json({ error: err.message });
   }
 });
