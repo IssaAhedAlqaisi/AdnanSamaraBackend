@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getConnection } = require('../database');
-const pool = getConnection();
+const { pool } = require('../database');
 
 /* ==========================
    🚛 المركبات الأساسية
@@ -11,6 +10,7 @@ router.get('/', async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM vehicles ORDER BY id DESC');
     res.json(rows);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -25,6 +25,7 @@ router.post('/', async (req, res) => {
     );
     res.json(rows[0]);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -39,7 +40,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 /* ==========================
-   🚚 Vehicle Logs (عداد المركبات)
+   🚚 عداد المركبات
    ========================== */
 (async () => {
   await pool.query(`
@@ -58,7 +59,7 @@ router.delete('/:id', async (req, res) => {
 
 router.get('/logs', async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT * FROM vehicle_logs ORDER BY id DESC`);
+    const { rows } = await pool.query('SELECT * FROM vehicle_logs ORDER BY id DESC');
     res.json(rows);
   } catch (err) {
     console.error('Error fetching logs:', err.message);
@@ -69,14 +70,14 @@ router.get('/logs', async (req, res) => {
 router.post('/logs', async (req, res) => {
   const { driver_name, vehicle_number, odometer_start, odometer_end } = req.body;
   try {
-    const result = await pool.query(
+    const { rows } = await pool.query(
       `INSERT INTO vehicle_logs (driver_name, vehicle_number, odometer_start, odometer_end)
        VALUES ($1,$2,$3,$4) RETURNING *`,
       [driver_name, vehicle_number, odometer_start, odometer_end]
     );
-    res.json(result.rows[0]);
+    res.json(rows[0]);
   } catch (err) {
-    console.error('Error inserting vehicle log:', err.message);
+    console.error('Error inserting log:', err.message);
     res.status(500).json({ error: 'Failed to add log' });
   }
 });

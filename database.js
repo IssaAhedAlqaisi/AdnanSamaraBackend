@@ -1,26 +1,27 @@
 // backend/database.js
 const { Pool } = require('pg');
 
-// 🧠 إعداد الاتصال من متغير البيئة في Render
+// 🔗 الاتصال بقاعدة بيانات PostgreSQL على Render
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false, // لازم حتى Render يشتغل بدون مشاكل SSL
+    rejectUnauthorized: false, // ضروري حتى Render يسمح بالاتصال
   },
 });
 
-// 🚀 التحقق من الاتصال
+// ✅ اختبار الاتصال
 pool.connect()
   .then(() => console.log('✅ Connected to PostgreSQL database'))
   .catch(err => console.error('❌ PostgreSQL connection error:', err.message));
 
 /* ============================
-   إنشاء الجداول (إن لم تكن موجودة)
+   🧱 إنشاء الجداول (إن لم تكن موجودة)
    ============================ */
 async function createTables() {
   console.log('📊 Ensuring PostgreSQL tables exist...');
 
   try {
+    // 👇 العملاء
     await pool.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
@@ -41,6 +42,7 @@ async function createTables() {
       );
     `);
 
+    // 👇 الموظفين
     await pool.query(`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
@@ -59,6 +61,7 @@ async function createTables() {
       );
     `);
 
+    // 👇 الإيرادات
     await pool.query(`
       CREATE TABLE IF NOT EXISTS revenue (
         id SERIAL PRIMARY KEY,
@@ -79,6 +82,7 @@ async function createTables() {
       );
     `);
 
+    // 👇 المصاريف
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id SERIAL PRIMARY KEY,
@@ -95,6 +99,7 @@ async function createTables() {
       );
     `);
 
+    // 👇 الموردين
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id SERIAL PRIMARY KEY,
@@ -111,6 +116,7 @@ async function createTables() {
       );
     `);
 
+    // 👇 المركبات
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id SERIAL PRIMARY KEY,
@@ -126,16 +132,31 @@ async function createTables() {
       );
     `);
 
+    // 👇 سجل عداد المركبات
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vehicle_logs (
+        id SERIAL PRIMARY KEY,
+        date DATE DEFAULT CURRENT_DATE,
+        driver_name TEXT NOT NULL,
+        vehicle_number TEXT NOT NULL,
+        odometer_start REAL,
+        odometer_end REAL,
+        distance REAL GENERATED ALWAYS AS (odometer_end - odometer_start) STORED,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     console.log('✅ All tables are ready!');
   } catch (err) {
     console.error('❌ Error creating tables:', err.message);
   }
 }
 
+// إنشاء الجداول عند تشغيل السيرفر
 createTables();
 
 /* ============================
-   دالة إرجاع الاتصال العام
+   دالة الإرجاع العامة للاتصال
    ============================ */
 function getConnection() {
   return pool;
