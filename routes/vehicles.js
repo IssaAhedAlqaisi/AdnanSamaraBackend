@@ -20,7 +20,8 @@ router.post('/', async (req, res) => {
   const { number, driver_name, current_location, status } = req.body;
 
   if (!number || !driver_name) {
-    return res.status(400).json({ error: ⚠️ رقم اللوحة واسم السائق مطلوبان' });
+    return res.status(400).json({ error: '⚠️ رقم اللوحة واسم السائق مطلوبان' });
+
   }
 
   try {
