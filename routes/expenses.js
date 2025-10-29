@@ -1,133 +1,188 @@
-// backend/expenses.js
+// backend/routes/expenses.js
 const express = require('express');
 const router = express.Router();
-const db = require('./database'); // هذا بيرجع pool جاهز
 
-// Helper: تنظيف طريقة الدفع (اختياري)
-function normalizePayMethod(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  if (['كاش', 'cash'].includes(s)) return 'كاش';
-  if (['فيزا', 'visa'].includes(s)) return 'فيزا';
-  if (['ذمم', 'credit', 'ذِمم'].includes(s)) return 'ذمم';
-  return s; // اقبل أي قيمة قديمة/قد تجي من الداتا
+// ✅ مهم: لأننا داخل مجلد routes، المسار للـ database هو ../database
+const pool = require('../database');
+
+/* -------------------- Helpers -------------------- */
+function toPgDate(input) {
+  if (!input) return null;
+  // يقبل "YYYY-MM-DD" كما هي
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+  // يحول "MM/DD/YYYY" -> "YYYY-MM-DD"
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {
+    const [mm, dd, yyyy] = input.split('/');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  // أي شيء آخر: خلّيه كما هو (Postgres راح يرفض لو غلط)
+  return input;
 }
 
-// ---------- GET /api/expenses ----------
-// رجّع المصاريف مع اسم النوع (join)
-router.get('/', async (req, res) => {
-  try {
-    const q = `
-      SELECT e.id, e.date, e.type_id, t.name AS type_name,
-             e.amount, e.beneficiary, e.pay_method, e.description, e.notes, e.status
-      FROM expenses e
-      LEFT JOIN expense_types t ON t.id = e.type_id
-      ORDER BY e.date DESC, e.id DESC;
-    `;
-    const { rows } = await db.query(q);
-    res.json(rows);
-  } catch (err) {
-    console.error('GET /expenses error:', err.message);
-    res.status(500).json({ error: 'Internal error fetching expenses' });
-  }
-});
+function asNumber(n) {
+  if (n === null || n === undefined || n === '') return null;
+  const v = Number(n);
+  return Number.isFinite(v) ? v : null;
+}
 
-// ---------- POST /api/expenses ----------
-// إضافة مصروف جديد
-router.post('/', async (req, res) => {
-  try {
-    const {
-      amount,
-      date,          // yyyy-mm-dd (اختياري)
-      type_id,       // رقم النوع REQUIRED
-      beneficiary,   // اختياري
-      pay_method,    // اختياري
-      description,   // اختياري
-      notes          // اختياري
-    } = req.body || {};
-
-    // تحقق أساسي
-    if (amount === undefined || amount === null || isNaN(Number(amount))) {
-      return res.status(400).json({ error: 'amount is required and must be a number' });
-    }
-    if (!type_id) {
-      return res.status(400).json({ error: 'type_id is required' });
-    }
-
-    const cleanAmount = Number(amount);
-    const cleanDate = date && String(date).trim() ? date : null; // لو null الداتا بيس بتحط CURRENT_DATE
-    const cleanPay = normalizePayMethod(pay_method);
-
-    const q = `
-      INSERT INTO expenses (date, type_id, amount, beneficiary, pay_method, description, notes)
-      VALUES (COALESCE($1::date, CURRENT_DATE), $2::int, $3::real, $4::text, $5::text, $6::text, $7::text)
-      RETURNING id, date, type_id, amount, beneficiary, pay_method, description, notes, status;
-    `;
-    const params = [cleanDate, type_id, cleanAmount, beneficiary || null, cleanPay, description || null, notes || null];
-    const { rows } = await db.query(q, params);
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error('POST /expenses error:', err.message, 'payload=', req.body);
-    res.status(500).json({ error: 'Internal error inserting expense' });
-  }
-});
-
-// ---------- DELETE /api/expenses/:id ----------
-router.delete('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    await db.query('DELETE FROM expenses WHERE id=$1', [id]);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('DELETE /expenses error:', err.message);
-    res.status(500).json({ error: 'Internal error deleting expense' });
-  }
-});
-
-/* ===============================
-   أنواع المصاريف
-   =============================== */
+/* -------------------- Expenses Types -------------------- */
 
 // GET /api/expenses/types
 router.get('/types', async (_req, res) => {
   try {
-    const { rows } = await db.query('SELECT id, name FROM expense_types ORDER BY name ASC');
+    const { rows } = await pool.query(
+      `SELECT id, name, to_char(created_at, 'YYYY-MM-DD') AS created_at
+       FROM expense_types
+       ORDER BY name ASC`
+    );
     res.json(rows);
   } catch (err) {
-    console.error('GET /expenses/types error:', err.message);
-    res.status(500).json({ error: 'Internal error fetching types' });
+    console.error('GET /expenses/types error:', err);
+    res.status(500).json({ error: 'Failed to fetch expense types' });
   }
 });
 
-// POST /api/expenses/types
+// POST /api/expenses/types  { name }
 router.post('/types', async (req, res) => {
   try {
     const name = (req.body?.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'name is required' });
+    if (!name) return res.status(400).json({ error: 'Type name is required' });
 
-    const q = `
-      INSERT INTO expense_types (name)
-      VALUES ($1)
-      ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-      RETURNING id, name;
-    `;
-    const { rows } = await db.query(q, [name]);
-    res.status(201).json(rows[0]);
+    const { rows } = await pool.query(
+      `INSERT INTO expense_types (name) VALUES ($1)
+       ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id, name`,
+      [name]
+    );
+    res.json(rows[0]);
   } catch (err) {
-    console.error('POST /expenses/types error:', err.message);
-    res.status(500).json({ error: 'Internal error adding type' });
+    console.error('POST /expenses/types error:', err);
+    res.status(500).json({ error: 'Failed to add expense type' });
   }
 });
 
 // DELETE /api/expenses/types/:id
 router.delete('/types/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    await db.query('DELETE FROM expense_types WHERE id=$1', [id]);
-    res.json({ ok: true });
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid type id' });
+
+    await pool.query(`DELETE FROM expense_types WHERE id = $1`, [id]);
+    res.json({ success: true });
   } catch (err) {
-    console.error('DELETE /expenses/types error:', err.message);
-    res.status(500).json({ error: 'Internal error deleting type' });
+    console.error('DELETE /expenses/types/:id error:', err);
+    res.status(500).json({ error: 'Failed to delete expense type' });
+  }
+});
+
+/* -------------------- Expenses CRUD -------------------- */
+
+// GET /api/expenses
+router.get('/', async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT e.id,
+              to_char(e.date, 'YYYY-MM-DD') AS date,
+              e.type_id,
+              COALESCE(t.name, '') AS type_name,
+              e.amount,
+              e.beneficiary,
+              e.pay_method,
+              e.description,
+              e.notes,
+              e.status
+       FROM expenses e
+       LEFT JOIN expense_types t ON t.id = e.type_id
+       ORDER BY e.date DESC, e.id DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /expenses error:', err);
+    res.status(500).json({ error: 'Failed to fetch expenses' });
+  }
+});
+
+// POST /api/expenses
+router.post('/', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const date = toPgDate(body.date) || toPgDate(new Date().toISOString().slice(0, 10));
+    const type_id = body.type_id ? Number(body.type_id) : null;
+    const amount = asNumber(body.amount);
+    const beneficiary = body.beneficiary ?? null;
+    const pay_method = body.pay_method ?? null; // 'كاش' | 'فيزا' | 'ذمم'
+    const description = body.description ?? null;
+    const notes = body.notes ?? null;
+
+    if (amount === null) {
+      return res.status(400).json({ error: 'amount is required and must be a number' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO expenses
+         (date, type_id, amount, beneficiary, pay_method, description, notes, status)
+       VALUES ($1,   $2,      $3,     $4,          $5,         $6,          $7,   'paid')
+       RETURNING id`,
+      [date, type_id, amount, beneficiary, pay_method, description, notes]
+    );
+
+    res.json({ id: rows[0].id });
+  } catch (err) {
+    console.error('POST /expenses error:', err);
+    res.status(500).json({ error: 'Failed to add expense' });
+  }
+});
+
+// PUT /api/expenses/:id
+router.put('/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    const body = req.body || {};
+    const date = body.date ? toPgDate(body.date) : null;
+    const type_id = body.type_id !== undefined ? Number(body.type_id) : null;
+    const amount = body.amount !== undefined ? asNumber(body.amount) : null;
+    const beneficiary = body.beneficiary ?? null;
+    const pay_method = body.pay_method ?? null;
+    const description = body.description ?? null;
+    const notes = body.notes ?? null;
+    const status = body.status ?? null;
+
+    const { rows } = await pool.query(
+      `UPDATE expenses
+         SET date = COALESCE($1, date),
+             type_id = COALESCE($2, type_id),
+             amount = COALESCE($3, amount),
+             beneficiary = COALESCE($4, beneficiary),
+             pay_method = COALESCE($5, pay_method),
+             description = COALESCE($6, description),
+             notes = COALESCE($7, notes),
+             status = COALESCE($8, status)
+       WHERE id = $9
+       RETURNING id`,
+      [date, type_id, amount, beneficiary, pay_method, description, notes, status, id]
+    );
+
+    if (!rows.length) return res.status(404).json({ error: 'Expense not found' });
+    res.json({ id: rows[0].id });
+  } catch (err) {
+    console.error('PUT /expenses/:id error:', err);
+    res.status(500).json({ error: 'Failed to update expense' });
+  }
+});
+
+// DELETE /api/expenses/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
+
+    await pool.query(`DELETE FROM expenses WHERE id = $1`, [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /expenses/:id error:', err);
+    res.status(500).json({ error: 'Failed to delete expense' });
   }
 });
 
