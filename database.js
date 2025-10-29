@@ -1,25 +1,19 @@
 // backend/database.js
 const { Pool } = require('pg');
 
-// 🔗 اتصال PostgreSQL على Render
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
 });
 
-// ✅ اختبار الاتصال
 pool.connect()
   .then(() => console.log('✅ Connected to PostgreSQL database'))
   .catch(err => console.error('❌ PostgreSQL connection error:', err.message));
 
-/* ============================
-   🧱 إنشاء الجداول (إن لم تكن موجودة)
-   ============================ */
 async function createTables() {
   console.log('📊 Ensuring PostgreSQL tables exist...');
-
   try {
-    // 👇 العملاء
+    // ======= clients =======
     await pool.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
@@ -40,7 +34,7 @@ async function createTables() {
       );
     `);
 
-    // 👇 الموظفين
+    // ======= employees =======
     await pool.query(`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
@@ -59,43 +53,7 @@ async function createTables() {
       );
     `);
 
-    // 👇 الإيرادات — مطابق للفورم والفرونت
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS revenue (
-        id SERIAL PRIMARY KEY,
-        date DATE NOT NULL DEFAULT CURRENT_DATE,
-        amount REAL NOT NULL,
-        payment_method TEXT DEFAULT 'cash',
-        tank_type TEXT,
-        water_amount TEXT,
-        source TEXT DEFAULT 'system',
-        driver_name TEXT,
-        vehicle_number TEXT,
-        notes TEXT,
-        status TEXT DEFAULT 'completed',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // 👇 المصاريف
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS expenses (
-        id SERIAL PRIMARY KEY,
-        date DATE NOT NULL,
-        type TEXT NOT NULL,
-        amount REAL NOT NULL,
-        category TEXT NOT NULL,
-        recipient TEXT,
-        payment_method TEXT DEFAULT 'cash',
-        description TEXT,
-        notes TEXT,
-        status TEXT DEFAULT 'paid',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // 👇 الموردين
+    // ======= suppliers =======
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id SERIAL PRIMARY KEY,
@@ -112,7 +70,7 @@ async function createTables() {
       );
     `);
 
-    // 👇 المركبات
+    // ======= vehicles =======
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id SERIAL PRIMARY KEY,
@@ -128,7 +86,7 @@ async function createTables() {
       );
     `);
 
-    // 👇 سجل عداد المركبات (مخزّن دائمًا)
+    // ======= vehicle_logs (اليومي) =======
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicle_logs (
         id SERIAL PRIMARY KEY,
@@ -142,14 +100,60 @@ async function createTables() {
       );
     `);
 
+    // ======= revenue =======
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS revenue (
+        id SERIAL PRIMARY KEY,
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
+        source TEXT DEFAULT 'system',
+        type TEXT DEFAULT 'water_sale',
+        amount REAL NOT NULL,
+        client_id INTEGER,
+        client_name TEXT,
+        vehicle_id INTEGER,
+        vehicle_number TEXT,
+        payment_method TEXT DEFAULT 'cash',
+        description TEXT,
+        notes TEXT,
+        status TEXT DEFAULT 'completed',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ======= expense_types (جديدة) =======
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS expense_types (
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ======= expenses =======
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS expenses (
+        id SERIAL PRIMARY KEY,
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
+        type TEXT NOT NULL,                     -- اسم النوع (يرتبط بـ expense_types.name)
+        amount REAL NOT NULL,
+        beneficiary TEXT,                       -- الجهة المستفيدة
+        payment_method TEXT NOT NULL DEFAULT 'كاش' CHECK (payment_method IN ('كاش','فيزا','ذمم')),
+        description TEXT,
+        notes TEXT,
+        status TEXT DEFAULT 'paid',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     console.log('✅ All tables are ready!');
   } catch (err) {
     console.error('❌ Error creating tables:', err.message);
   }
 }
-
-// إنشاء الجداول عند تشغيل السيرفر
 createTables();
 
-// إرجاع الـ pool مباشرة (بدون getConnection)
-module.exports = pool;
+function getConnection() {
+  return pool;
+}
+module.exports = getConnection();
