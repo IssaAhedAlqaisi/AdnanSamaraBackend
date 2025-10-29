@@ -13,7 +13,7 @@ pool.connect()
 async function createTables() {
   console.log('📊 Ensuring PostgreSQL tables exist...');
   try {
-    // clients
+    /* ---------- clients ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
@@ -34,7 +34,7 @@ async function createTables() {
       );
     `);
 
-    // employees
+    /* ---------- employees ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
@@ -53,7 +53,7 @@ async function createTables() {
       );
     `);
 
-    // suppliers
+    /* ---------- suppliers ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id SERIAL PRIMARY KEY,
@@ -70,7 +70,7 @@ async function createTables() {
       );
     `);
 
-    // vehicles
+    /* ---------- vehicles ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id SERIAL PRIMARY KEY,
@@ -86,7 +86,7 @@ async function createTables() {
       );
     `);
 
-    // vehicle_logs
+    /* ---------- vehicle_logs ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicle_logs (
         id SERIAL PRIMARY KEY,
@@ -100,9 +100,7 @@ async function createTables() {
       );
     `);
 
-    // =======================
-    // Expenses + Expense Types
-    // =======================
+    /* ---------- expense_types ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expense_types (
         id SERIAL PRIMARY KEY,
@@ -111,14 +109,15 @@ async function createTables() {
       );
     `);
 
+    /* ---------- expenses (create if missing) ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id SERIAL PRIMARY KEY,
         date DATE NOT NULL DEFAULT CURRENT_DATE,
-        type_id INTEGER REFERENCES expense_types(id) ON DELETE SET NULL,
+        type_id INTEGER,
         amount REAL NOT NULL,
         beneficiary TEXT,
-        pay_method TEXT CHECK (pay_method IN ('cash','visa','credit')),
+        pay_method TEXT,
         description TEXT,
         notes TEXT,
         status TEXT DEFAULT 'paid',
@@ -126,13 +125,45 @@ async function createTables() {
       );
     `);
 
+    /* ---------- expenses (make sure new columns exist) ---------- */
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type_id INTEGER;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS amount REAL;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS beneficiary TEXT;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS pay_method TEXT;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS description TEXT;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes TEXT;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'paid';`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+
+    /* ---------- FK to expense_types (ignore if already there) ---------- */
+    // بعض قواعد بيانات PostgreSQL القديمة قد لا تدعم IF NOT EXISTS على القيود،
+    // لذلك نستخدم DO block لنتأكد إنو ما نضيف نفس القيد مرتين.
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'expenses_type_id_fkey'
+        ) THEN
+          ALTER TABLE expenses
+            ADD CONSTRAINT expenses_type_id_fkey
+            FOREIGN KEY (type_id) REFERENCES expense_types(id)
+            ON DELETE SET NULL;
+        END IF;
+      END$$;
+    `);
+
+    /* ---------- CHECK على pay_method (نحوّل لاحقاً بالقيمة الموحّدة) ---------- */
+    // منفضل نخلي التحقق بالتطبيق بدل CHECK صارم، حتى ما نكسر بيانات قديمة.
+    // لو عندك CHECK قديم، ما بزيد هون شيء حتى ما يفشل ALTER.
+
     console.log('✅ All tables are ready!');
   } catch (err) {
-    console.error('❌ Error creating tables:', err.message);
+    console.error('❌ Error creating/altering tables:', err.message);
   }
 }
 
-// run on boot
 createTables();
 
 function getConnection() {
