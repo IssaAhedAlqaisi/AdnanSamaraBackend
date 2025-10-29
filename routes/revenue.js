@@ -1,3 +1,4 @@
+// backend/routes/revenue.js
 const express = require("express");
 const router = express.Router();
 const db = require("../database");
@@ -7,12 +8,14 @@ function today() {
   return d.toISOString().slice(0, 10);
 }
 
+/* ==================== GET ==================== */
+/* نرجّع التاريخ كنص جاهز 'YYYY-MM-DD' + أسماء alias تناسب الواجهة */
 router.get("/", async (req, res) => {
   try {
     const sql = `
       SELECT
         id,
-        date,
+        TO_CHAR(date, 'YYYY-MM-DD') AS date,
         amount,
         payment_method,
         type              AS tank_type,
@@ -24,14 +27,15 @@ router.get("/", async (req, res) => {
       FROM revenue
       ORDER BY date DESC, id DESC;
     `;
-    const result = await db.query(sql);
-    res.json(result.rows);
+    const { rows } = await db.query(sql);
+    res.json(rows);
   } catch (err) {
     console.error("❌ Error fetching revenue:", err.message);
     res.status(500).json({ error: "خطأ أثناء تحميل الإيرادات" });
   }
 });
 
+/* ==================== POST ==================== */
 router.post("/", async (req, res) => {
   try {
     const {
@@ -55,9 +59,16 @@ router.post("/", async (req, res) => {
       VALUES
         ($1,   $2,     $3,   $4,     $5,          $6,             $7,             $8,          $9,   'completed', NOW())
       RETURNING
-        id, date, amount, payment_method,
-        type AS tank_type, description, notes,
-        client_name AS driver_name, vehicle_number, source AS source_type;
+        id,
+        TO_CHAR(date, 'YYYY-MM-DD') AS date,
+        amount,
+        payment_method,
+        type AS tank_type,
+        description,
+        notes,
+        client_name AS driver_name,
+        vehicle_number,
+        source AS source_type;
     `;
 
     const values = [
@@ -72,18 +83,19 @@ router.post("/", async (req, res) => {
       notes || null
     ];
 
-    const result = await db.query(sql, values);
-    res.json({ message: "✅ تمت إضافة الإيراد بنجاح", revenue: result.rows[0] });
+    const { rows } = await db.query(sql, values);
+    res.json({ message: "✅ تمت إضافة الإيراد بنجاح", revenue: rows[0] });
   } catch (err) {
     console.error("❌ Error inserting revenue:", err.message);
     res.status(500).json({ error: "خطأ أثناء إضافة الإيراد" });
   }
 });
 
+/* ==================== DELETE ==================== */
 router.delete("/:id", async (req, res) => {
   try {
-    const result = await db.query("DELETE FROM revenue WHERE id = $1;", [req.params.id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: "الإيراد غير موجود" });
+    const r = await db.query("DELETE FROM revenue WHERE id = $1", [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: "الإيراد غير موجود" });
     res.json({ message: "🗑️ تم حذف الإيراد" });
   } catch (err) {
     console.error("❌ Error deleting revenue:", err.message);
