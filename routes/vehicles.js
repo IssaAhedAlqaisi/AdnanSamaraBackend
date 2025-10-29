@@ -51,5 +51,44 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "فشل إضافة المركبة" });
   }
 });
+/* ================================
+   🚛 سجلات المركبات اليومية
+   ================================ */
+router.get("/logs", async (req, res) => {
+  try {
+    const result = await db.query("SELECT * FROM vehicle_logs ORDER BY date DESC;");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("❌ Error fetching logs:", err.message);
+    res.status(500).json({ error: "فشل تحميل السجلات" });
+  }
+});
+
+router.post("/logs", async (req, res) => {
+  try {
+    const { driver_name, vehicle_number, odometer_start, odometer_end } = req.body;
+    if (!driver_name || !vehicle_number)
+      return res.status(400).json({ error: "اختر السائق والمركبة أولاً" });
+
+    const distance = (odometer_end || 0) - (odometer_start || 0);
+    const sql = `
+      INSERT INTO vehicle_logs (date, driver_name, vehicle_number, odometer_start, odometer_end, distance)
+      VALUES (CURRENT_DATE, $1, $2, $3, $4, $5)
+      RETURNING *;
+    `;
+    const result = await db.query(sql, [
+      driver_name,
+      vehicle_number,
+      odometer_start,
+      odometer_end,
+      distance,
+    ]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("❌ Error adding log:", err.message);
+    res.status(500).json({ error: "فشل إضافة السجل" });
+  }
+});
+
 
 module.exports = router;
