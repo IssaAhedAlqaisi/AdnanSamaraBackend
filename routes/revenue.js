@@ -1,32 +1,26 @@
-// backend/routes/revenue.js
 const express = require("express");
 const router = express.Router();
-
-// ✅ استخدم نفس الإكسبورت من database.js (بترجع Pool جاهز)
 const db = require("../database");
 
-/* 🔧 Helper: تاريخ اليوم بصيغة YYYY-MM-DD */
 function today() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
 }
 
-/* ==================== GET - جلب كل الإيرادات ==================== */
 router.get("/", async (req, res) => {
   try {
-    // نعمل alias للأعمدة عشان توافق أسماء الفرونت الحالية
     const sql = `
       SELECT
         id,
         date,
         amount,
         payment_method,
-        type              AS tank_type,       -- نوع النقلة (اسم متوقّعه الواجهة)
+        type              AS tank_type,
         description,
         notes,
-        client_name       AS driver_name,     -- اسم السائق (موقّتًا)
+        client_name       AS driver_name,
         vehicle_number,
-        source            AS source_type      -- مصدر الماء
+        source            AS source_type
       FROM revenue
       ORDER BY date DESC, id DESC;
     `;
@@ -38,28 +32,22 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* ==================== POST - إضافة إيراد جديد ==================== */
 router.post("/", async (req, res) => {
   try {
-    // نستقبل حقول الفرونت ونحوّلها لأعمدة الجدول الموجودة
     const {
       amount,
-      payment_type,   // -> payment_method
-      tank_type,      // -> type
-      water_amount,   // نلصقه في description/notes
-      source_type,    // -> source
-      driver_name,    // -> client_name (مؤقت)
-      vehicle_number, // -> vehicle_number
+      payment_type,
+      tank_type,
+      water_amount,
+      source_type,
+      driver_name,
+      vehicle_number,
       notes
     } = req.body;
 
-    if (!amount) {
-      return res.status(400).json({ error: "⚠️ المبلغ مطلوب" });
-    }
+    if (!amount) return res.status(400).json({ error: "⚠️ المبلغ مطلوب" });
 
-    const description = water_amount
-      ? `كمية المياه: ${water_amount}`
-      : null;
+    const description = water_amount ? `كمية المياه: ${water_amount}` : null;
 
     const sql = `
       INSERT INTO revenue
@@ -92,7 +80,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-/* ==================== DELETE - حذف إيراد ==================== */
 router.delete("/:id", async (req, res) => {
   try {
     const result = await db.query("DELETE FROM revenue WHERE id = $1;", [req.params.id]);
