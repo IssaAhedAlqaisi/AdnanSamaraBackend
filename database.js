@@ -5,7 +5,7 @@ const { Pool } = require('pg');
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false, // ضروري حتى Render يسمح بالاتصال
+    rejectUnauthorized: false,
   },
 });
 
@@ -120,7 +120,7 @@ async function createTables() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id SERIAL PRIMARY KEY,
-        number TEXT NOT NULL ,
+        number TEXT NOT NULL,
         driver_name TEXT,
         current_location TEXT,
         capacity TEXT,
@@ -132,7 +132,7 @@ async function createTables() {
       );
     `);
 
-    // 👇 سجل عداد المركبات
+    // 👇 سجل عداد المركبات (اليومي)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicle_logs (
         id SERIAL PRIMARY KEY,
@@ -158,8 +158,4 @@ createTables();
 /* ============================
    دالة الإرجاع العامة للاتصال
    ============================ */
-function getConnection() {
-  return pool;
-}
-
-module.exports = getConnection();
+module.exports = pool;
