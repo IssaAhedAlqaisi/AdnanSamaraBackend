@@ -67,8 +67,11 @@ router.get("/logs", async (req, res) => {
 router.post("/logs", async (req, res) => {
   try {
     const { driver_name, vehicle_number, odometer_start, odometer_end } = req.body;
-    if (!driver_name || !vehicle_number)
-      return res.status(400).json({ error: "اختر السائق والمركبة أولاً" });
+    if (!driver_name || !vehicle_number) {
+       console.warn("⚠️ Missing driver or vehicle, skipping log insert");
+       return res.json({ warning: "تم تجاوز السجل لأن البيانات ناقصة" });
+       }  
+
 
     const sql = `
       INSERT INTO vehicle_logs (date, driver_name, vehicle_number, odometer_start, odometer_end)
