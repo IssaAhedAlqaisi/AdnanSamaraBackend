@@ -2,20 +2,18 @@
 const express = require('express');
 const router = express.Router();
 
-// ✅ مهم: لأننا داخل مجلد routes، المسار للـ database هو ../database
+// ✅ لأن الملف داخل routes، لازم ../database
 const pool = require('../database');
 
 /* -------------------- Helpers -------------------- */
 function toPgDate(input) {
   if (!input) return null;
-  // يقبل "YYYY-MM-DD" كما هي
-  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
-  // يحول "MM/DD/YYYY" -> "YYYY-MM-DD"
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;             // YYYY-MM-DD
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {                        // MM/DD/YYYY
     const [mm, dd, yyyy] = input.split('/');
     return `${yyyy}-${mm}-${dd}`;
   }
-  // أي شيء آخر: خلّيه كما هو (Postgres راح يرفض لو غلط)
+  // last resort: let Postgres try to parse
   return input;
 }
 
@@ -25,15 +23,27 @@ function asNumber(n) {
   return Number.isFinite(v) ? v : null;
 }
 
-/* -------------------- Expenses Types -------------------- */
+async function ensureTypeAndGetId(name) {
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+  const q = `
+    INSERT INTO expense_types (name)
+    VALUES ($1)
+    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id;
+  `;
+  const { rows } = await pool.query(q, [clean]);
+  return rows[0]?.id || null;
+}
+
+/* -------------------- Expense Types -------------------- */
 
 // GET /api/expenses/types
 router.get('/types', async (_req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, to_char(created_at, 'YYYY-MM-DD') AS created_at
-       FROM expense_types
-       ORDER BY name ASC`
+      `SELECT id, name, to_char(created_at,'YYYY-MM-DD') AS created_at
+       FROM expense_types ORDER BY name ASC`
     );
     res.json(rows);
   } catch (err) {
@@ -42,14 +52,14 @@ router.get('/types', async (_req, res) => {
   }
 });
 
-// POST /api/expenses/types  { name }
+// POST /api/expenses/types { name }
 router.post('/types', async (req, res) => {
   try {
     const name = (req.body?.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Type name is required' });
-
     const { rows } = await pool.query(
-      `INSERT INTO expense_types (name) VALUES ($1)
+      `INSERT INTO expense_types (name)
+       VALUES ($1)
        ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
        RETURNING id, name`,
       [name]
@@ -66,7 +76,6 @@ router.delete('/types/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid type id' });
-
     await pool.query(`DELETE FROM expense_types WHERE id = $1`, [id]);
     res.json({ success: true });
   } catch (err) {
@@ -82,9 +91,9 @@ router.get('/', async (_req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT e.id,
-              to_char(e.date, 'YYYY-MM-DD') AS date,
+              to_char(e.date,'YYYY-MM-DD') AS date,
               e.type_id,
-              COALESCE(t.name, '') AS type_name,
+              COALESCE(t.name,'') AS type_name,
               e.amount,
               e.beneficiary,
               e.pay_method,
@@ -106,11 +115,17 @@ router.get('/', async (_req, res) => {
 router.post('/', async (req, res) => {
   try {
     const body = req.body || {};
-    const date = toPgDate(body.date) || toPgDate(new Date().toISOString().slice(0, 10));
-    const type_id = body.type_id ? Number(body.type_id) : null;
+
+    // 👇 يقبل إمّا type_id أو type (اسم)
+    let type_id = body.type_id ? Number(body.type_id) : null;
+    if (!type_id && body.type) {
+      type_id = await ensureTypeAndGetId(body.type);
+    }
+
+    const date = toPgDate(body.date) || toPgDate(new Date().toISOString().slice(0,10));
     const amount = asNumber(body.amount);
     const beneficiary = body.beneficiary ?? null;
-    const pay_method = body.pay_method ?? null; // 'كاش' | 'فيزا' | 'ذمم'
+    const pay_method = body.pay_method ?? null;  // 'كاش' | 'فيزا' | 'ذمم'
     const description = body.description ?? null;
     const notes = body.notes ?? null;
 
@@ -129,7 +144,7 @@ router.post('/', async (req, res) => {
     res.json({ id: rows[0].id });
   } catch (err) {
     console.error('POST /expenses error:', err);
-    res.status(500).json({ error: 'Failed to add expense' });
+    res.status(500).json({ error: 'Failed to add expense', detail: err.message });
   }
 });
 
@@ -140,8 +155,12 @@ router.put('/:id', async (req, res) => {
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
 
     const body = req.body || {};
+
+    let type_id = null;
+    if (body.type_id !== undefined) type_id = Number(body.type_id);
+    if (!type_id && body.type) type_id = await ensureTypeAndGetId(body.type);
+
     const date = body.date ? toPgDate(body.date) : null;
-    const type_id = body.type_id !== undefined ? Number(body.type_id) : null;
     const amount = body.amount !== undefined ? asNumber(body.amount) : null;
     const beneficiary = body.beneficiary ?? null;
     const pay_method = body.pay_method ?? null;
@@ -177,7 +196,6 @@ router.delete('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
-
     await pool.query(`DELETE FROM expenses WHERE id = $1`, [id]);
     res.json({ success: true });
   } catch (err) {
