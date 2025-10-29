@@ -13,7 +13,7 @@ pool.connect()
 async function createTables() {
   console.log('📊 Ensuring PostgreSQL tables exist...');
   try {
-    // ======= clients =======
+    // clients
     await pool.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id SERIAL PRIMARY KEY,
@@ -34,7 +34,7 @@ async function createTables() {
       );
     `);
 
-    // ======= employees =======
+    // employees
     await pool.query(`
       CREATE TABLE IF NOT EXISTS employees (
         id SERIAL PRIMARY KEY,
@@ -53,7 +53,7 @@ async function createTables() {
       );
     `);
 
-    // ======= suppliers =======
+    // suppliers
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id SERIAL PRIMARY KEY,
@@ -70,7 +70,7 @@ async function createTables() {
       );
     `);
 
-    // ======= vehicles =======
+    // vehicles
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id SERIAL PRIMARY KEY,
@@ -86,7 +86,7 @@ async function createTables() {
       );
     `);
 
-    // ======= vehicle_logs (اليومي) =======
+    // vehicle_logs
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicle_logs (
         id SERIAL PRIMARY KEY,
@@ -100,28 +100,9 @@ async function createTables() {
       );
     `);
 
-    // ======= revenue =======
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS revenue (
-        id SERIAL PRIMARY KEY,
-        date DATE NOT NULL DEFAULT CURRENT_DATE,
-        source TEXT DEFAULT 'system',
-        type TEXT DEFAULT 'water_sale',
-        amount REAL NOT NULL,
-        client_id INTEGER,
-        client_name TEXT,
-        vehicle_id INTEGER,
-        vehicle_number TEXT,
-        payment_method TEXT DEFAULT 'cash',
-        description TEXT,
-        notes TEXT,
-        status TEXT DEFAULT 'completed',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    // ======= expense_types (جديدة) =======
+    // =======================
+    // Expenses + Expense Types
+    // =======================
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expense_types (
         id SERIAL PRIMARY KEY,
@@ -130,15 +111,14 @@ async function createTables() {
       );
     `);
 
-    // ======= expenses =======
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id SERIAL PRIMARY KEY,
         date DATE NOT NULL DEFAULT CURRENT_DATE,
-        type TEXT NOT NULL,                     -- اسم النوع (يرتبط بـ expense_types.name)
+        type_id INTEGER REFERENCES expense_types(id) ON DELETE SET NULL,
         amount REAL NOT NULL,
-        beneficiary TEXT,                       -- الجهة المستفيدة
-        payment_method TEXT NOT NULL DEFAULT 'كاش' CHECK (payment_method IN ('كاش','فيزا','ذمم')),
+        beneficiary TEXT,
+        pay_method TEXT CHECK (pay_method IN ('cash','visa','credit')),
         description TEXT,
         notes TEXT,
         status TEXT DEFAULT 'paid',
@@ -151,6 +131,8 @@ async function createTables() {
     console.error('❌ Error creating tables:', err.message);
   }
 }
+
+// run on boot
 createTables();
 
 function getConnection() {
