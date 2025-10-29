@@ -1,13 +1,13 @@
 // backend/routes/expenses.js
 const express = require('express');
 const router = express.Router();
-const pool = require('../database'); // <= صحيح لأنه داخل routes
+const pool = require('../database'); // صحيح: نحن داخل routes
 
-/* ============ Helpers ============ */
+/* ---------- Helpers ---------- */
 function toPgDate(input) {
   if (!input) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;            // YYYY-MM-DD
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {                       // MM/DD/YYYY
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;           // YYYY-MM-DD
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {                      // MM/DD/YYYY
     const [mm, dd, yyyy] = input.split('/');
     return `${yyyy}-${mm}-${dd}`;
   }
@@ -18,6 +18,20 @@ function asNumber(n) {
   const v = Number(n);
   return Number.isFinite(v) ? v : null;
 }
+function isNumericStr(v){ return typeof v === 'string' && /^[0-9]+$/.test(v); }
+
+// طبيع طرق الدفع إلى صيغة ثابتة يقبلها أي CHECK قديم
+function normalizePayMethod(v) {
+  if (!v) return null;
+  const s = String(v).trim().toLowerCase();
+  // عربي / إنجليزي شائع
+  if (['كاش','نقد','نقدي','cash','cashy'].includes(s)) return 'cash';
+  if (['visa','فيزا','بطاقة','credit','debit','بطاقه'].includes(s)) return 'visa';
+  if (['ذمم','دين','آجل','creditor','receivable','on account'].includes(s)) return 'credit';
+  // إن لم يطابق شيء، رجّعه كمكتوب (لو ما عندك CHECK ما بتفرق)
+  return v;
+}
+
 async function ensureTypeAndGetId(name) {
   const clean = String(name || '').trim();
   if (!clean) return null;
@@ -30,11 +44,8 @@ async function ensureTypeAndGetId(name) {
   );
   return rows[0]?.id || null;
 }
-function isNumericStr(v) {
-  return typeof v === 'string' && /^[0-9]+$/.test(v);
-}
 
-/* ============ Expense Types ============ */
+/* ---------- Expense Types ---------- */
 router.get('/types', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -62,7 +73,7 @@ router.post('/types', async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error('POST /expenses/types error:', err);
-    res.status(500).json({ error: 'Failed to add expense type', detail: err.message });
+    res.status(500).json({ error: 'Failed to add expense type', detail: err.message, code: err.code });
   }
 });
 
@@ -74,11 +85,11 @@ router.delete('/types/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /expenses/types/:id error:', err);
-    res.status(500).json({ error: 'Failed to delete expense type', detail: err.message });
+    res.status(500).json({ error: 'Failed to delete expense type', detail: err.message, code: err.code });
   }
 });
 
-/* ============ Expenses CRUD ============ */
+/* ---------- Expenses CRUD ---------- */
 router.get('/', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -99,32 +110,31 @@ router.get('/', async (_req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('GET /expenses error:', err);
-    res.status(500).json({ error: 'Failed to fetch expenses', detail: err.message });
+    res.status(500).json({ error: 'Failed to fetch expenses', detail: err.message, code: err.code });
   }
 });
 
 router.post('/', async (req, res) => {
-  // 👇 Debug واضح عشان لو صار 500 نعرف السبب الحقيقي
-  console.log('POST /expenses payload:', req.body);
+  console.log('POST /expenses payload:', req.body); // debug
   try {
-    const body = req.body || {};
+    const b = req.body || {};
 
-    // النوع ممكن يجي id كستـرنغ "3" أو رقم أو اسم
+    // النوع: id أو اسم
     let type_id = null;
-    if (body.type_id !== undefined && body.type_id !== null && body.type_id !== '') {
-      type_id = Number(body.type_id);
-    } else if (isNumericStr(body.type)) {
-      type_id = Number(body.type);
-    } else if (body.type) {
-      type_id = await ensureTypeAndGetId(body.type);
+    if (b.type_id !== undefined && b.type_id !== null && b.type_id !== '') {
+      type_id = Number(b.type_id);
+    } else if (isNumericStr(b.type)) {
+      type_id = Number(b.type);
+    } else if (b.type) {
+      type_id = await ensureTypeAndGetId(b.type);
     }
 
-    const date = toPgDate(body.date) || toPgDate(new Date().toISOString().slice(0,10));
-    const amount = asNumber(body.amount);
-    const beneficiary = body.beneficiary ?? null;
-    const pay_method = body.pay_method ?? body.payment_method ?? null; // نتقبل الإسمين
-    const description = body.description ?? null;
-    const notes = body.notes ?? null;
+    const date = toPgDate(b.date) || toPgDate(new Date().toISOString().slice(0,10));
+    const amount = asNumber(b.amount);
+    const beneficiary = (b.beneficiary || '').trim() || null;
+    const pay_method = normalizePayMethod(b.pay_method || b.payment_method);
+    const description = (b.description || '').trim() || null;
+    const notes = (b.notes || '').trim() || null;
 
     if (amount === null) {
       return res.status(400).json({ error: 'amount is required and must be a number' });
@@ -141,7 +151,12 @@ router.post('/', async (req, res) => {
     res.json({ id: rows[0].id });
   } catch (err) {
     console.error('POST /expenses ERROR:', err);
-    res.status(500).json({ error: 'Failed to add expense', detail: err.message });
+    // نُرجع تفاصيل مفيدة للواجهة وقت الديبَغ
+    res.status(500).json({
+      error: 'Failed to add expense',
+      detail: err?.detail || err?.message,
+      code: err?.code
+    });
   }
 });
 
@@ -150,24 +165,25 @@ router.put('/:id', async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
 
-    const body = req.body || {};
+    const b = req.body || {};
 
     let type_id = null;
-    if (body.type_id !== undefined && body.type_id !== null && body.type_id !== '') {
-      type_id = Number(body.type_id);
-    } else if (isNumericStr(body.type)) {
-      type_id = Number(body.type);
-    } else if (body.type) {
-      type_id = await ensureTypeAndGetId(body.type);
+    if (b.type_id !== undefined && b.type_id !== null && b.type_id !== '') {
+      type_id = Number(b.type_id);
+    } else if (isNumericStr(b.type)) {
+      type_id = Number(b.type);
+    } else if (b.type) {
+      type_id = await ensureTypeAndGetId(b.type);
     }
 
-    const date = body.date ? toPgDate(body.date) : null;
-    const amount = body.amount !== undefined ? asNumber(body.amount) : null;
-    const beneficiary = body.beneficiary ?? null;
-    const pay_method = body.pay_method ?? body.payment_method ?? null;
-    const description = body.description ?? null;
-    const notes = body.notes ?? null;
-    const status = body.status ?? null;
+    const date = b.date ? toPgDate(b.date) : null;
+    const amount = b.amount !== undefined ? asNumber(b.amount) : null;
+    const beneficiary = b.beneficiary ?? null;
+    const pay_method = b.pay_method ? normalizePayMethod(b.pay_method) :
+                        (b.payment_method ? normalizePayMethod(b.payment_method) : null);
+    const description = b.description ?? null;
+    const notes = b.notes ?? null;
+    const status = b.status ?? null;
 
     const { rows } = await pool.query(
       `UPDATE expenses
@@ -188,7 +204,7 @@ router.put('/:id', async (req, res) => {
     res.json({ id: rows[0].id });
   } catch (err) {
     console.error('PUT /expenses/:id error:', err);
-    res.status(500).json({ error: 'Failed to update expense', detail: err.message });
+    res.status(500).json({ error: 'Failed to update expense', detail: err.message, code: err.code });
   }
 });
 
@@ -200,7 +216,7 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /expenses/:id error:', err);
-    res.status(500).json({ error: 'Failed to delete expense', detail: err.message });
+    res.status(500).json({ error: 'Failed to delete expense', detail: err.message, code: err.code });
   }
 });
 
