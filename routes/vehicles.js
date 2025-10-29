@@ -70,10 +70,9 @@ router.post("/logs", async (req, res) => {
     if (!driver_name || !vehicle_number)
       return res.status(400).json({ error: "اختر السائق والمركبة أولاً" });
 
-    const distance = (odometer_end || 0) - (odometer_start || 0);
     const sql = `
-      INSERT INTO vehicle_logs (date, driver_name, vehicle_number, odometer_start, odometer_end, distance)
-      VALUES (CURRENT_DATE, $1, $2, $3, $4, $5)
+      INSERT INTO vehicle_logs (date, driver_name, vehicle_number, odometer_start, odometer_end)
+      VALUES (CURRENT_DATE, $1, $2, $3, $4)
       RETURNING *;
     `;
     const result = await db.query(sql, [
@@ -81,12 +80,24 @@ router.post("/logs", async (req, res) => {
       vehicle_number,
       odometer_start,
       odometer_end,
-      distance,
     ]);
     res.json(result.rows[0]);
   } catch (err) {
     console.error("❌ Error adding log:", err.message);
     res.status(500).json({ error: "فشل إضافة السجل" });
+  }
+});
+/* 🗑️ حذف مركبة */
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await db.query("DELETE FROM vehicles WHERE id = $1 RETURNING *;", [id]);
+    if (result.rowCount === 0)
+      return res.status(404).json({ error: "لم يتم العثور على المركبة" });
+    res.json({ success: true, message: "تم حذف المركبة بنجاح" });
+  } catch (err) {
+    console.error("❌ Error deleting vehicle:", err.message);
+    res.status(500).json({ error: "فشل حذف المركبة" });
   }
 });
 

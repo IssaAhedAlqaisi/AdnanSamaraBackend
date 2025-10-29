@@ -120,7 +120,7 @@ async function createTables() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicles (
         id SERIAL PRIMARY KEY,
-        number TEXT NOT NULL UNIQUE,
+        number TEXT NOT NULL ,
         driver_name TEXT,
         current_location TEXT,
         capacity TEXT,
