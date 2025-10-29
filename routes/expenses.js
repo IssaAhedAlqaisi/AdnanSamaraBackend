@@ -3,147 +3,146 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database');
 
-/* =========================
-   📥 جلب المصاريف (مع اسم النوع)
-   ========================= */
-router.get('/', async (req, res) => {
+/* ============ المصاريف ============ */
+
+// GET /api/expenses
+router.get('/', async (_req, res) => {
   try {
-    const result = await db.query(
-      `
-      SELECT e.id,
-             e.date,
-             e.amount,
-             e.beneficiary,
-             e.pay_method,
-             e.description,
-             e.notes,
-             e.status,
-             e.type_id,
-             t.name AS type_name
-      FROM expenses e
-      LEFT JOIN expense_types t ON t.id = e.type_id
-      ORDER BY e.date DESC, e.id DESC;
-      `
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error('❌ Error fetching expenses:', err.message);
+    const q = `SELECT id, date, type, amount, payment_method, beneficiary, description, notes
+               FROM expenses
+               ORDER BY date DESC, id DESC;`;
+    const r = await db.query(q);
+    res.json(r.rows);
+  } catch (e) {
+    console.error('❌ Error fetching expenses:', e.message);
     res.status(500).json({ error: 'فشل تحميل المصاريف' });
   }
 });
 
-/* =========================
-   ➕ إضافة مصروف
-   ========================= */
+// POST /api/expenses
 router.post('/', async (req, res) => {
   try {
-    // نتوقع: { date?, type_id, amount, beneficiary?, pay_method, description?, notes? }
     const {
-      date, type_id, amount,
-      beneficiary, pay_method, description, notes
+      amount,
+      type,
+      date,              // اختياري – إن ما وصل بنستخدم DEFAULT CURRENT_DATE
+      payment_method,    // كاش / فيزا / ذمم
+      beneficiary,
+      description,
+      notes,
     } = req.body;
 
-    if (!amount || !pay_method) {
-      return res.status(400).json({ error: 'المبلغ وطريقة الدفع مطلوبان' });
+    if (amount == null || isNaN(Number(amount))) {
+      return res.status(400).json({ error: 'المبلغ مطلوب' });
     }
 
-    // توحيد طريقة الدفع
-    const method = (pay_method || '').toLowerCase();
-    const allowed = ['cash', 'visa', 'ذمم', 'كاش', 'فيزا'];
-    if (!allowed.includes(method) && !allowed.includes(pay_method)) {
-      // بنقبل عربي/انجليزي – بنحوّل 3 قيم أساسية
-    }
-
-    // تحويل عربي -> انجليزي للاتساق الداخلي (اختياري)
-    let normalized = method;
-    if (['كاش'].includes(pay_method)) normalized = 'cash';
-    if (['فيزا'].includes(pay_method)) normalized = 'visa';
-    if (['ذمم'].includes(pay_method)) normalized = 'ذمم'; // نخليها كما هي إن حابها بالعربي
-
-    const sql = `
-      INSERT INTO expenses
-        (date, type_id, amount, beneficiary, pay_method, description, notes, status)
-      VALUES
-        ($1,   $2,      $3,     $4,         $5,         $6,         $7,   'paid')
+    const q = `
+      INSERT INTO expenses (date, type, amount, payment_method, beneficiary, description, notes)
+      VALUES (COALESCE($1::date, DEFAULT), $2, $3, COALESCE($4,'كاش'), $5, $6, $7)
       RETURNING *;
     `;
-    const values = [
-      date || new Date(), // التاريخ تلقائي لو مش مبعوث
-      type_id || null,
-      amount,
-      beneficiary || null,
-      normalized || 'cash',
-      description || null,
-      notes || null
-    ];
-
-    const result = await db.query(sql, values);
-    res.json({ message: '✅ تم إضافة المصروف', expense: result.rows[0] });
-  } catch (err) {
-    console.error('❌ Error adding expense:', err.message);
+    const v = [date || null, type || null, Number(amount), payment_method || null, beneficiary || null, description || null, notes || null];
+    const r = await db.query(q, v);
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('❌ Error inserting expense:', e.message);
     res.status(500).json({ error: 'فشل إضافة المصروف' });
   }
 });
 
-/* =========================
-   📚 جلب أنواع المصاريف
-   ========================= */
-router.get('/types', async (_req, res) => {
+// PUT /api/expenses/:id
+router.put('/:id', async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT id, name, created_at FROM expense_types ORDER BY name ASC;`
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error('❌ Error fetching expense types:', err.message);
-    res.status(500).json({ error: 'فشل تحميل الأنواع' });
+    const { id } = req.params;
+    const {
+      date,
+      type,
+      amount,
+      payment_method,
+      beneficiary,
+      description,
+      notes,
+    } = req.body;
+
+    const q = `
+      UPDATE expenses
+      SET date = COALESCE($1::date, date),
+          type = COALESCE($2, type),
+          amount = COALESCE($3, amount),
+          payment_method = COALESCE($4, payment_method),
+          beneficiary = COALESCE($5, beneficiary),
+          description = COALESCE($6, description),
+          notes = COALESCE($7, notes)
+      WHERE id = $8
+      RETURNING *;
+    `;
+    const v = [date || null, type || null, amount != null ? Number(amount) : null, payment_method || null, beneficiary || null, description || null, notes || null, id];
+    const r = await db.query(q, v);
+    if (!r.rowCount) return res.status(404).json({ error: 'المصروف غير موجود' });
+    res.json(r.rows[0]);
+  } catch (e) {
+    console.error('❌ Error updating expense:', e.message);
+    res.status(500).json({ error: 'فشل تعديل المصروف' });
   }
 });
 
-/* =========================
-   ➕ إضافة نوع مصروف
-   ========================= */
+// DELETE /api/expenses/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const r = await db.query(`DELETE FROM expenses WHERE id=$1`, [id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'المصروف غير موجود' });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('❌ Error deleting expense:', e.message);
+    res.status(500).json({ error: 'فشل حذف المصروف' });
+  }
+});
+
+
+/* ============ أنواع المصاريف ============ */
+
+// GET /api/expenses/types
+router.get('/types', async (_req, res) => {
+  try {
+    const r = await db.query(`SELECT id, name FROM expense_types ORDER BY name ASC;`);
+    res.json(r.rows);
+  } catch (e) {
+    console.error('❌ Error fetching expense types:', e.message);
+    res.status(500).json({ error: 'فشل تحميل أنواع المصاريف' });
+  }
+});
+
+// POST /api/expenses/types
 router.post('/types', async (req, res) => {
   try {
     const { name } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'اسم النوع مطلوب' });
     }
-    const result = await db.query(
-      `INSERT INTO expense_types (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING *;`,
+    const r = await db.query(
+      `INSERT INTO expense_types (name) VALUES ($1)
+       ON CONFLICT (name) DO NOTHING
+       RETURNING *;`,
       [name.trim()]
     );
-    // لو موجود مسبقًا، ما برجع سطر — خلّينا نرجّع OK
-    if (result.rows[0]) {
-      res.json({ message: '✅ تم إضافة النوع', type: result.rows[0] });
-    } else {
-      res.json({ message: 'ℹ️ النوع موجود مسبقًا' });
-    }
-  } catch (err) {
-    console.error('❌ Error adding expense type:', err.message);
-    res.status(500).json({ error: 'فشل إضافة النوع' });
+    const added = r.rows[0] || (await db.query(`SELECT id, name FROM expense_types WHERE name=$1`, [name.trim()])).rows[0];
+    res.status(201).json(added);
+  } catch (e) {
+    console.error('❌ Error adding expense type:', e.message);
+    res.status(500).json({ error: 'فشل إضافة نوع المصروف' });
   }
 });
 
-/* =========================
-   🗑️ حذف نوع مصروف
-   ========================= */
+// DELETE /api/expenses/types/:id
 router.delete('/types/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    // نحذف فقط لو لا يوجد مصروف مرتبط
-    const inUse = await db.query(`SELECT 1 FROM expenses WHERE type_id=$1 LIMIT 1`, [id]);
-    if (inUse.rowCount > 0) {
-      return res.status(400).json({ error: 'لا يمكن حذف النوع لوجود مصاريف مرتبطة به' });
-    }
-    const result = await db.query(`DELETE FROM expense_types WHERE id=$1 RETURNING *;`, [id]);
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'النوع غير موجود' });
-    }
-    res.json({ message: '🗑️ تم حذف النوع', ok: true });
-  } catch (err) {
-    console.error('❌ Error deleting expense type:', err.message);
-    res.status(500).json({ error: 'فشل حذف النوع' });
+    await db.query(`DELETE FROM expense_types WHERE id=$1`, [id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('❌ Error deleting expense type:', e.message);
+    res.status(500).json({ error: 'فشل حذف نوع المصروف' });
   }
 });
 

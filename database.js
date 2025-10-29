@@ -109,15 +109,15 @@ async function createTables() {
       );
     `);
 
-    /* ---------- expenses (create if missing) ---------- */
+    /* ---------- expenses (base table) ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id SERIAL PRIMARY KEY,
         date DATE NOT NULL DEFAULT CURRENT_DATE,
-        type_id INTEGER,
+        type_id INTEGER,                -- موجود للتوافق السابق
         amount REAL NOT NULL,
         beneficiary TEXT,
-        pay_method TEXT,
+        pay_method TEXT,                -- العمود القديم
         description TEXT,
         notes TEXT,
         status TEXT DEFAULT 'paid',
@@ -125,7 +125,7 @@ async function createTables() {
       );
     `);
 
-    /* ---------- expenses (make sure new columns exist) ---------- */
+    /* ---------- ensure/alter columns (no-op if exist) ---------- */
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type_id INTEGER;`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS amount REAL;`);
@@ -136,15 +136,16 @@ async function createTables() {
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'paid';`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
 
-    /* ---------- FK to expense_types (ignore if already there) ---------- */
-    // بعض قواعد بيانات PostgreSQL القديمة قد لا تدعم IF NOT EXISTS على القيود،
-    // لذلك نستخدم DO block لنتأكد إنو ما نضيف نفس القيد مرتين.
+    /* ---------- NEW columns required by new frontend/backend ---------- */
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type TEXT;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_method TEXT;`);
+
+    /* ---------- FK to expense_types if absent ---------- */
     await pool.query(`
       DO $$
       BEGIN
         IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint
-          WHERE conname = 'expenses_type_id_fkey'
+          SELECT 1 FROM pg_constraint WHERE conname = 'expenses_type_id_fkey'
         ) THEN
           ALTER TABLE expenses
             ADD CONSTRAINT expenses_type_id_fkey
@@ -154,9 +155,21 @@ async function createTables() {
       END$$;
     `);
 
-    /* ---------- CHECK على pay_method (نحوّل لاحقاً بالقيمة الموحّدة) ---------- */
-    // منفضل نخلي التحقق بالتطبيق بدل CHECK صارم، حتى ما نكسر بيانات قديمة.
-    // لو عندك CHECK قديم، ما بزيد هون شيء حتى ما يفشل ALTER.
+    /* ---------- Gentle backfill (once) ---------- */
+    // انسخ القيمة القديمة إلى العمود الجديد إن كانت الجديدة فاضية
+    await pool.query(`
+      UPDATE expenses
+      SET payment_method = pay_method
+      WHERE payment_method IS NULL AND pay_method IS NOT NULL;
+    `);
+
+    // لو عندك type_id وتقدر تربطه باسم النوع
+    await pool.query(`
+      UPDATE expenses e
+      SET type = et.name
+      FROM expense_types et
+      WHERE e.type IS NULL AND e.type_id = et.id;
+    `);
 
     console.log('✅ All tables are ready!');
   } catch (err) {
