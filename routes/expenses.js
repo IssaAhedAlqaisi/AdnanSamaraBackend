@@ -1,13 +1,13 @@
 // backend/routes/expenses.js
 const express = require('express');
 const router = express.Router();
-const pool = require('../database'); // صحيح: نحن داخل routes
+const pool = require('../database');
 
 /* ---------- Helpers ---------- */
 function toPgDate(input) {
   if (!input) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;           // YYYY-MM-DD
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {                      // MM/DD/YYYY
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {
     const [mm, dd, yyyy] = input.split('/');
     return `${yyyy}-${mm}-${dd}`;
   }
@@ -19,19 +19,14 @@ function asNumber(n) {
   return Number.isFinite(v) ? v : null;
 }
 function isNumericStr(v){ return typeof v === 'string' && /^[0-9]+$/.test(v); }
-
-// طبيع طرق الدفع إلى صيغة ثابتة يقبلها أي CHECK قديم
 function normalizePayMethod(v) {
   if (!v) return null;
   const s = String(v).trim().toLowerCase();
-  // عربي / إنجليزي شائع
   if (['كاش','نقد','نقدي','cash','cashy'].includes(s)) return 'cash';
   if (['visa','فيزا','بطاقة','credit','debit','بطاقه'].includes(s)) return 'visa';
   if (['ذمم','دين','آجل','creditor','receivable','on account'].includes(s)) return 'credit';
-  // إن لم يطابق شيء، رجّعه كمكتوب (لو ما عندك CHECK ما بتفرق)
   return v;
 }
-
 async function ensureTypeAndGetId(name) {
   const clean = String(name || '').trim();
   if (!clean) return null;
@@ -45,7 +40,7 @@ async function ensureTypeAndGetId(name) {
   return rows[0]?.id || null;
 }
 
-/* ---------- Expense Types ---------- */
+/* ---------- Types ---------- */
 router.get('/types', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -89,7 +84,7 @@ router.delete('/types/:id', async (req, res) => {
   }
 });
 
-/* ---------- Expenses CRUD ---------- */
+/* ---------- Expenses ---------- */
 router.get('/', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -115,11 +110,11 @@ router.get('/', async (_req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  console.log('POST /expenses payload:', req.body); // debug
+  console.log('POST /expenses payload:', req.body);
   try {
     const b = req.body || {};
 
-    // النوع: id أو اسم
+    // resolve type_id
     let type_id = null;
     if (b.type_id !== undefined && b.type_id !== null && b.type_id !== '') {
       type_id = Number(b.type_id);
@@ -140,10 +135,16 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'amount is required and must be a number' });
     }
 
+    // نملأ عمود type (النصي) باسم النوع (للتوافق مع بيانات قديمة)
     const { rows } = await pool.query(
       `INSERT INTO expenses
-         (date, type_id, amount, beneficiary, pay_method, description, notes, status)
-       VALUES ($1,   $2,      $3,     $4,          $5,         $6,          $7,   'paid')
+         (date, type_id, type, amount, beneficiary, pay_method, description, notes, status)
+       VALUES (
+         $1,
+         $2,
+         (SELECT name FROM expense_types WHERE id = $2),
+         $3, $4, $5, $6, $7, 'paid'
+       )
        RETURNING id`,
       [date, type_id, amount, beneficiary, pay_method, description, notes]
     );
@@ -151,7 +152,6 @@ router.post('/', async (req, res) => {
     res.json({ id: rows[0].id });
   } catch (err) {
     console.error('POST /expenses ERROR:', err);
-    // نُرجع تفاصيل مفيدة للواجهة وقت الديبَغ
     res.status(500).json({
       error: 'Failed to add expense',
       detail: err?.detail || err?.message,
@@ -189,6 +189,7 @@ router.put('/:id', async (req, res) => {
       `UPDATE expenses
          SET date = COALESCE($1, date),
              type_id = COALESCE($2, type_id),
+             type = COALESCE((SELECT name FROM expense_types WHERE id = COALESCE($2, type_id)), type),
              amount = COALESCE($3, amount),
              beneficiary = COALESCE($4, beneficiary),
              pay_method = COALESCE($5, pay_method),

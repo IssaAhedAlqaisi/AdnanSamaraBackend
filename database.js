@@ -109,25 +109,29 @@ async function createTables() {
       );
     `);
 
-    /* ---------- expenses (base table) ---------- */
+    /* ---------- expenses: أنشئ لو ناقص ---------- */
     await pool.query(`
       CREATE TABLE IF NOT EXISTS expenses (
         id SERIAL PRIMARY KEY,
         date DATE NOT NULL DEFAULT CURRENT_DATE,
-        type_id INTEGER,                -- موجود للتوافق السابق
+        -- ملاحظة: عمود type القديم (نصّي) قد يكون موجود تاريخيًا
+        type TEXT,
         amount REAL NOT NULL,
         beneficiary TEXT,
-        pay_method TEXT,                -- العمود القديم
+        pay_method TEXT,
         description TEXT,
         notes TEXT,
         status TEXT DEFAULT 'paid',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        type_id INTEGER,
+        -- احتياطي: في بعض البيانات القديمة قد يوجد pay_method مكرر
+        paymethod_mirror TEXT
       );
     `);
 
-    /* ---------- ensure/alter columns (no-op if exist) ---------- */
+    /* ---------- ضمان الأعمدة/القيود الحديثة ---------- */
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS date DATE DEFAULT CURRENT_DATE;`);
-    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type_id INTEGER;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type TEXT;`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS amount REAL;`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS beneficiary TEXT;`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS pay_method TEXT;`);
@@ -135,12 +139,26 @@ async function createTables() {
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS notes TEXT;`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'paid';`);
     await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type_id INTEGER;`);
+    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paymethod_mirror TEXT;`);
 
-    /* ---------- NEW columns required by new frontend/backend ---------- */
-    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS type TEXT;`);
-    await pool.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_method TEXT;`);
+    // لو كان عمود type قديم وعليه NOT NULL -> شيله
+    await pool.query(`DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name='expenses' AND column_name='type'
+        ) THEN
+          BEGIN
+            EXECUTE 'ALTER TABLE expenses ALTER COLUMN type DROP NOT NULL';
+          EXCEPTION WHEN others THEN
+            -- تجاهل لو ما كان عليه NOT NULL أصلاً
+            NULL;
+          END;
+        END IF;
+      END$$;`);
 
-    /* ---------- FK to expense_types if absent ---------- */
+    // FK إلى expense_types (مرة واحدة)
     await pool.query(`
       DO $$
       BEGIN
@@ -155,22 +173,6 @@ async function createTables() {
       END$$;
     `);
 
-    /* ---------- Gentle backfill (once) ---------- */
-    // انسخ القيمة القديمة إلى العمود الجديد إن كانت الجديدة فاضية
-    await pool.query(`
-      UPDATE expenses
-      SET payment_method = pay_method
-      WHERE payment_method IS NULL AND pay_method IS NOT NULL;
-    `);
-
-    // لو عندك type_id وتقدر تربطه باسم النوع
-    await pool.query(`
-      UPDATE expenses e
-      SET type = et.name
-      FROM expense_types et
-      WHERE e.type IS NULL AND e.type_id = et.id;
-    `);
-
     console.log('✅ All tables are ready!');
   } catch (err) {
     console.error('❌ Error creating/altering tables:', err.message);
@@ -179,7 +181,5 @@ async function createTables() {
 
 createTables();
 
-function getConnection() {
-  return pool;
-}
+function getConnection() { return pool; }
 module.exports = getConnection();
