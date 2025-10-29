@@ -1,12 +1,10 @@
 // backend/database.js
 const { Pool } = require('pg');
 
-// 🔗 الاتصال بقاعدة بيانات PostgreSQL على Render
+// 🔗 اتصال PostgreSQL على Render
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: { rejectUnauthorized: false },
 });
 
 // ✅ اختبار الاتصال
@@ -61,20 +59,18 @@ async function createTables() {
       );
     `);
 
-    // 👇 الإيرادات
+    // 👇 الإيرادات — مطابق للفورم والفرونت
     await pool.query(`
       CREATE TABLE IF NOT EXISTS revenue (
         id SERIAL PRIMARY KEY,
-        date DATE NOT NULL,
-        source TEXT DEFAULT 'system',
-        type TEXT DEFAULT 'water_sale',
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
         amount REAL NOT NULL,
-        client_id INTEGER,
-        client_name TEXT,
-        vehicle_id INTEGER,
-        vehicle_number TEXT,
         payment_method TEXT DEFAULT 'cash',
-        description TEXT,
+        tank_type TEXT,
+        water_amount TEXT,
+        source TEXT DEFAULT 'system',
+        driver_name TEXT,
+        vehicle_number TEXT,
         notes TEXT,
         status TEXT DEFAULT 'completed',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -132,7 +128,7 @@ async function createTables() {
       );
     `);
 
-    // 👇 سجل عداد المركبات (اليومي)
+    // 👇 سجل عداد المركبات (مخزّن دائمًا)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS vehicle_logs (
         id SERIAL PRIMARY KEY,
@@ -155,7 +151,5 @@ async function createTables() {
 // إنشاء الجداول عند تشغيل السيرفر
 createTables();
 
-/* ============================
-   دالة الإرجاع العامة للاتصال
-   ============================ */
+// إرجاع الـ pool مباشرة (بدون getConnection)
 module.exports = pool;

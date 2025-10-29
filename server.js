@@ -43,7 +43,7 @@ app.use('/api/vehicles', require('./routes/vehicles'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 
 /* ============================
-   🧭 مسار رئيسي بسيط على Render (بدل frontend المحلي)
+   🧭 مسار رئيسي بسيط على Render
    ============================ */
 app.get('/', (req, res) => {
   res.json({
