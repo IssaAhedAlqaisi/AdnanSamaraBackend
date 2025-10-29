@@ -53,18 +53,28 @@ router.post("/", async (req, res) => {
    🚛 سجلات المركبات اليومية (ثابتة)
    ================================ */
 
-// رجّع كل السجلات (الأحدث أولاً)
+// GET /api/vehicles/logs
 router.get("/logs", async (req, res) => {
   try {
-    const result = await db.query(
-      "SELECT id, date, driver_name, vehicle_number, odometer_start, odometer_end, distance FROM vehicle_logs ORDER BY date DESC, id DESC;"
-    );
+    const result = await db.query(`
+      SELECT id,
+             date::text AS date,
+             driver_name,
+             vehicle_number,
+             odometer_start,
+             odometer_end,
+             distance,
+             created_at
+      FROM vehicle_logs
+      ORDER BY created_at DESC, date DESC, id DESC;
+    `);
     res.json(result.rows);
   } catch (err) {
     console.error("❌ Error fetching logs:", err.message);
     res.status(500).json({ error: "فشل تحميل السجلات" });
   }
 });
+
 
 // أضف سجل جديد — من دون رفض بسبب قيم ناقصة: نكمّل بقيم افتراضية ونحوّل الأرقام
 router.post("/logs", async (req, res) => {
