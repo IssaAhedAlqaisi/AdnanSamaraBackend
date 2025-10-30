@@ -3,11 +3,11 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../database');
 
-/* ---------- Helpers ---------- */
+/* ========== helpers ========== */
 function toPgDate(input) {
   if (!input) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input)) return input;             // 2025-10-30
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(input)) {                       // 10/30/2025
     const [mm, dd, yyyy] = input.split('/');
     return `${yyyy}-${mm}-${dd}`;
   }
@@ -18,11 +18,11 @@ function asNumber(n) {
   const v = Number(n);
   return Number.isFinite(v) ? v : null;
 }
-function isNumericStr(v){ return typeof v === 'string' && /^[0-9]+$/.test(v); }
+function isNumericStr(v) { return typeof v === 'string' && /^[0-9]+$/.test(v); }
 function normalizePayMethod(v) {
   if (!v) return null;
   const s = String(v).trim().toLowerCase();
-  if (['كاش','نقد','نقدي','cash','cashy'].includes(s)) return 'cash';
+  if (['كاش','نقد','نقدي','cash'].includes(s)) return 'cash';
   if (['visa','فيزا','بطاقة','credit','debit','بطاقه'].includes(s)) return 'visa';
   if (['ذمم','دين','آجل','creditor','receivable','on account'].includes(s)) return 'credit';
   return v;
@@ -40,7 +40,7 @@ async function ensureTypeAndGetId(name) {
   return rows[0]?.id || null;
 }
 
-/* ---------- Types ---------- */
+/* ========== TYPES CRUD ========== */
 router.get('/types', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -76,7 +76,7 @@ router.delete('/types/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid type id' });
-    await pool.query(`DELETE FROM expense_types WHERE id = $1`, [id]);
+    await pool.query(`DELETE FROM expense_types WHERE id=$1`, [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /expenses/types/:id error:', err);
@@ -84,7 +84,7 @@ router.delete('/types/:id', async (req, res) => {
   }
 });
 
-/* ---------- Expenses ---------- */
+/* ========== EXPENSES ========== */
 router.get('/', async (_req, res) => {
   try {
     const { rows } = await pool.query(
@@ -114,17 +114,26 @@ router.post('/', async (req, res) => {
   try {
     const b = req.body || {};
 
-    // resolve type_id
-    let type_id = null;
+    // resolve type_id + readable type name for legacy columns
+    let type_id = null, type_name = null;
     if (b.type_id !== undefined && b.type_id !== null && b.type_id !== '') {
       type_id = Number(b.type_id);
     } else if (isNumericStr(b.type)) {
       type_id = Number(b.type);
     } else if (b.type) {
-      type_id = await ensureTypeAndGetId(b.type);
+      type_name = String(b.type).trim();
+      type_id = await ensureTypeAndGetId(type_name);
     }
 
-    const date = toPgDate(b.date) || toPgDate(new Date().toISOString().slice(0,10));
+    // if still no type_name, fetch by id
+    if (!type_name && type_id) {
+      const q = await pool.query(`SELECT name FROM expense_types WHERE id=$1`, [type_id]);
+      type_name = q.rows[0]?.name || null;
+    }
+    // fallback readable name
+    const legacyName = type_name || 'غير مصنف';
+
+    const date = toPgDate(b.date) || new Date().toISOString().slice(0, 10);
     const amount = asNumber(b.amount);
     const beneficiary = (b.beneficiary || '').trim() || null;
     const pay_method = normalizePayMethod(b.pay_method || b.payment_method);
@@ -135,28 +144,19 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'amount is required and must be a number' });
     }
 
-    // نملأ عمود type (النصي) باسم النوع (للتوافق مع بيانات قديمة)
+    // Insert — نعبّي type و category بنفس الاسم (للتوافق مع أعمدة قديمة)
     const { rows } = await pool.query(
       `INSERT INTO expenses
-         (date, type_id, type, amount, beneficiary, pay_method, description, notes, status)
-       VALUES (
-         $1,
-         $2,
-         (SELECT name FROM expense_types WHERE id = $2),
-         $3, $4, $5, $6, $7, 'paid'
-       )
+         (date, type_id, type, category, amount, beneficiary, pay_method, description, notes, status)
+       VALUES ($1, $2, $3, $3, $4, $5, $6, $7, $8, 'paid')
        RETURNING id`,
-      [date, type_id, amount, beneficiary, pay_method, description, notes]
+      [date, type_id, legacyName, amount, beneficiary, pay_method, description, notes]
     );
 
     res.json({ id: rows[0].id });
   } catch (err) {
     console.error('POST /expenses ERROR:', err);
-    res.status(500).json({
-      error: 'Failed to add expense',
-      detail: err?.detail || err?.message,
-      code: err?.code
-    });
+    res.status(500).json({ error: 'Failed to add expense', detail: err?.detail || err?.message, code: err?.code });
   }
 });
 
@@ -166,21 +166,25 @@ router.put('/:id', async (req, res) => {
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
 
     const b = req.body || {};
-
-    let type_id = null;
+    let type_id = null, type_name = null;
     if (b.type_id !== undefined && b.type_id !== null && b.type_id !== '') {
       type_id = Number(b.type_id);
     } else if (isNumericStr(b.type)) {
       type_id = Number(b.type);
     } else if (b.type) {
-      type_id = await ensureTypeAndGetId(b.type);
+      type_name = String(b.type).trim();
+      type_id = await ensureTypeAndGetId(type_name);
+    }
+    if (!type_name && type_id) {
+      const q = await pool.query(`SELECT name FROM expense_types WHERE id=$1`, [type_id]);
+      type_name = q.rows[0]?.name || null;
     }
 
     const date = b.date ? toPgDate(b.date) : null;
     const amount = b.amount !== undefined ? asNumber(b.amount) : null;
     const beneficiary = b.beneficiary ?? null;
-    const pay_method = b.pay_method ? normalizePayMethod(b.pay_method) :
-                        (b.payment_method ? normalizePayMethod(b.payment_method) : null);
+    const pay_method = b.pay_method ? normalizePayMethod(b.pay_method)
+      : (b.payment_method ? normalizePayMethod(b.payment_method) : null);
     const description = b.description ?? null;
     const notes = b.notes ?? null;
     const status = b.status ?? null;
@@ -189,18 +193,18 @@ router.put('/:id', async (req, res) => {
       `UPDATE expenses
          SET date = COALESCE($1, date),
              type_id = COALESCE($2, type_id),
-             type = COALESCE((SELECT name FROM expense_types WHERE id = COALESCE($2, type_id)), type),
-             amount = COALESCE($3, amount),
-             beneficiary = COALESCE($4, beneficiary),
-             pay_method = COALESCE($5, pay_method),
-             description = COALESCE($6, description),
-             notes = COALESCE($7, notes),
-             status = COALESCE($8, status)
-       WHERE id = $9
+             type = COALESCE($3, type),
+             category = COALESCE($3, category),
+             amount = COALESCE($4, amount),
+             beneficiary = COALESCE($5, beneficiary),
+             pay_method = COALESCE($6, pay_method),
+             description = COALESCE($7, description),
+             notes = COALESCE($8, notes),
+             status = COALESCE($9, status)
+       WHERE id = $10
        RETURNING id`,
-      [date, type_id, amount, beneficiary, pay_method, description, notes, status, id]
+      [date, type_id, (type_name || null), amount, beneficiary, pay_method, description, notes, status, id]
     );
-
     if (!rows.length) return res.status(404).json({ error: 'Expense not found' });
     res.json({ id: rows[0].id });
   } catch (err) {
@@ -213,7 +217,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid id' });
-    await pool.query(`DELETE FROM expenses WHERE id = $1`, [id]);
+    await pool.query(`DELETE FROM expenses WHERE id=$1`, [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /expenses/:id error:', err);
